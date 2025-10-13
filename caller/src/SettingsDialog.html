@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      body {
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        padding: 1rem;
+        color: #333;
+      }
+      h2 {
+        border-bottom: 2px solid #ddd;
+        padding-bottom: 0.5rem;
+        margin-top: 0;
+      }
+      .form-group {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: bold;
+        font-size: 0.9em;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 1em;
+      }
+      small {
+        font-size: 0.8em;
+        color: #666;
+        display: block;
+        margin-top: 4px;
+      }
+      .buttons {
+        margin-top: 1.5rem;
+        text-align: right;
+        border-top: 1px solid #eee;
+        padding-top: 1rem;
+      }
+      button {
+        padding: 10px 18px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      #save-btn {
+        background-color: #007bff;
+        color: white;
+      }
+      #save-btn:disabled {
+        background-color: #aaa;
+      }
+      #cancel-btn {
+        background-color: #f1f1f1;
+        color: #333;
+        margin-left: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Tegaru Press 設定</h2>
+    <form id="settings-form">
+      <div class="form-group">
+        <label for="github-user">GitHubユーザー名</label>
+        <input
+          type="text"
+          id="github-user"
+          name="GITHUB_USER"
+          value="<?= settings.GITHUB_USER || '' ?>"
+        />
+      </div>
+      <div class="form-group">
+        <label for="github-repo">GitHubリポジトリ名</label>
+        <input
+          type="text"
+          id="github-repo"
+          name="GITHUB_REPO"
+          value="<?= settings.GITHUB_REPO || '' ?>"
+        />
+      </div>
+      <div class="form-group">
+        <label for="file-path">ファイルパス</label>
+        <input
+          type="text"
+          id="file-path"
+          name="FILE_PATH"
+          value="<?= settings.FILE_PATH || '' ?>"
+        />
+      </div>
+      <div class="form-group">
+        <label for="commit-message">コミットメッセージ</label>
+        <input
+          type="text"
+          id="commit-message"
+          name="COMMIT_MESSAGE"
+          value="<?= settings.COMMIT_MESSAGE || '' ?>"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="github-token">GitHubアクセストークン (PAT)</label>
+        <input
+          type="password"
+          id="github-token"
+          name="GITHUB_TOKEN"
+          placeholder="変更する場合のみ入力"
+        />
+        <small
+          >現在設定されている値は表示されません。変更する場合のみ、新しいトークンを入力してください。</small
+        >
+      </div>
+
+      <div class="buttons">
+        <button type="submit" id="save-btn">保存</button>
+        <button type="button" id="cancel-btn">キャンセル</button>
+      </div>
+    </form>
+
+    <script>
+      // Cancel button closes the dialog
+      document
+        .getElementById("cancel-btn")
+        .addEventListener("click", function () {
+          google.script.host.close();
+        });
+
+      // Form submission handler
+      document
+        .getElementById("settings-form")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+
+          // Disable button to prevent multiple submissions
+          const saveBtn = document.getElementById("save-btn");
+          saveBtn.disabled = true;
+          saveBtn.textContent = "保存中...";
+
+          // Collect form data into an object
+          const formData = {
+            GITHUB_USER: this.elements.GITHUB_USER.value,
+            GITHUB_REPO: this.elements.GITHUB_REPO.value,
+            FILE_PATH: this.elements.FILE_PATH.value,
+            COMMIT_MESSAGE: this.elements.COMMIT_MESSAGE.value,
+          };
+
+          // Conditionally add token if the field exists
+          if (this.elements.GITHUB_TOKEN) {
+            formData.GITHUB_TOKEN = this.elements.GITHUB_TOKEN.value;
+          }
+
+          // Call the server-side function to save the settings
+          google.script.run
+            .withSuccessHandler(function () {
+              google.script.host.close();
+            })
+            .withFailureHandler(function (error) {
+              alert("設定の保存に失敗しました: " + error.message);
+              // Re-enable button on failure
+              saveBtn.disabled = false;
+              saveBtn.textContent = "保存";
+            })
+            .saveSettings(formData);
+        });
+    </script>
+  </body>
+</html>

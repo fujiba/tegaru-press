@@ -1,0 +1,53 @@
+# GitHub Actions Workflow for Doc to GitHub Publisher
+# This workflow automates the deployment of the library and updates the template document.
+
+name: Deploy Library and Update Template
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "library/**"
+      - "caller/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install clasp
+        run: npm install -g @google/clasp
+      - name: Setup clasp credentials
+        run: echo '${{ secrets.CLASP_TOKEN }}' > ~/.clasprc.json
+      - name: Deploy Library
+        run: |
+          cd library
+          # .clasp.jsonをSecretsから生成
+          echo '{"scriptId":"${{ secrets.LIBRARY_SCRIPT_ID }}"}' > .clasp.json
+          clasp push
+          # 新しいバージョンを作成し、そのバージョン番号を取得
+          VERSION=$(clasp version "Automated deployment from GitHub Actions" | awk '{print $2}')
+          echo "NEW_VERSION=${VERSION}" >> $GITHUB_ENV
+          # 新しいバージョンでデプロイ
+          clasp deploy --versionNumber ${VERSION} --description "CI: Deploy version ${VERSION}"
+          cd ..
+      - name: Update Template Caller Script
+        run: |
+          cd caller
+          sed -i.bak 's/"version": ".*"/"version": "${{ env.NEW_VERSION }}"/' src/appsscript.json
+
+          # .clasp.jsonをSecretsから生成
+          echo '{"scriptId":"${{ secrets.TEMPLATE_SCRIPT_ID }}","rootDir":"src"}' > .clasp.json
+
+          # テンプレートのスクリプトを強制的にpushして更新
+          clasp push --force
+
+          echo "Template updated to use library version ${{ env.NEW_VERSION }}"
+          cd ..
