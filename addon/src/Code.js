@@ -1,7 +1,8 @@
 /**
  * @fileoverview Google Workspace Add-on implementation for Tegaru Press.
  * This file handles the Card-based UI for the add-on sidebar.
- * New feature: Supports updating multiple files from a single document using Document Tabs (Named Ranges).
+ * This version re-implements multi-tab selection and ensures the 'last_pushed'
+ * timestamp logic is correct.
  */
 
 const LIB = TegaruPress;
@@ -16,32 +17,37 @@ function onDocsHomepage(e) {
 }
 
 /**
- * Creates the main card for the add-on, allowing users to select a tab and perform actions.
+ * Creates the main card for the add-on, with checkboxes for each tab.
  * @returns {Card} The main card UI.
  */
 function createMainCard() {
   const doc = DocumentApp.getActiveDocument();
-  const namedRanges = doc.getNamedRanges(); // これがドキュメントタブの実体です
+  const tabs = doc.getTabs();
+  const flatTabs = _flattenTabs(tabs);
 
+  // FEATURE: Use CHECK_BOX for multi-select
   const tabSelection = CardService.newSelectionInput()
-    .setFieldName("selected_tab")
-    .setTitle("更新するタブを選択")
-    .setType(CardService.SelectionInputType.DROPDOWN);
+    .setFieldName("selected_tabs") // Use plural name for multi-select
+    .setTitle("更新するタブを選択（複数選択可）")
+    .setType(CardService.SelectionInputType.CHECK_BOX);
 
-  if (namedRanges.length > 0) {
-    namedRanges.forEach((range) => {
-      tabSelection.addItem(range.getName(), range.getName(), false);
+  if (flatTabs.length > 0) {
+    flatTabs.forEach((tabInfo) => {
+      tabSelection.addItem(tabInfo.title, tabInfo.id, false);
     });
   } else {
-    // タブがない場合は、ドキュメント全体を対象とする
-    tabSelection.addItem("ドキュメント全体", "DOCUMENT_ROOT", true);
+    tabSelection.addItem("（タブがありません）", "", true).setDisabled(true);
   }
 
-  const pushAction =
-    CardService.newAction().setFunctionName("handlePushAction");
-  const previewAction = CardService.newAction().setFunctionName(
-    "handlePreviewAction"
-  );
+  const pushAction = CardService.newAction()
+    .setFunctionName("handlePushAction")
+    .setParameters({});
+  const previewAction = CardService.newAction()
+    .setFunctionName("handlePreviewAction")
+    .setParameters({});
+  const insertFrontMatterAction = CardService.newAction()
+    .setFunctionName("handleInsertFrontMatterAction")
+    .setParameters({});
   const settingsAction = CardService.newAction().setFunctionName(
     "handleSettingsAction"
   );
@@ -50,19 +56,26 @@ function createMainCard() {
     .setHeader(CardService.newCardHeader().setTitle("Tegaru Press"))
     .addSection(
       CardService.newCardSection()
-        .addWidget(tabSelection) // ★ タブ選択用のドロップダウンを追加
+        .addWidget(tabSelection)
+        .addWidget(
+          CardService.newButtonSet().addButton(
+            CardService.newTextButton()
+              .setText("選択したタブをPush") // Reflects multi-select capability
+              .setOnClickAction(pushAction)
+              .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+          )
+        )
         .addWidget(
           CardService.newButtonSet()
             .addButton(
               CardService.newTextButton()
-                .setText("GitHubへPush")
-                .setOnClickAction(pushAction)
-                .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+                .setText("Markdownプレビュー")
+                .setOnClickAction(previewAction)
             )
             .addButton(
               CardService.newTextButton()
-                .setText("Markdownプレビュー")
-                .setOnClickAction(previewAction)
+                .setText("フロントマターを挿入")
+                .setOnClickAction(insertFrontMatterAction)
             )
             .addButton(
               CardService.newTextButton()
@@ -77,39 +90,58 @@ function createMainCard() {
 }
 
 /**
- * Action handler for the "Push to GitHub" button.
- * @param {Object} e The event object containing form inputs.
- * @returns {ActionResponse} A response that shows a notification.
+ * Action handler for the "Push" button. Handles multiple selected tabs.
+ * @param {Object} e The event object.
+ * @returns {ActionResponse}
  */
 function handlePushAction(e) {
   try {
-    const selectedTabName = e.formInputs.selected_tab[0];
-    const documentData = _buildDocumentData(selectedTabName);
-    const settings = PropertiesService.getDocumentProperties().getProperties();
-
-    let finalPath = "";
-    // タブが選択されている場合、ルートディレクトリとタブ名を結合
-    if (selectedTabName && selectedTabName !== "DOCUMENT_ROOT") {
-      const contentRoot = settings.CONTENT_ROOT_PATH || "";
-      finalPath = [contentRoot, selectedTabName].filter(Boolean).join("/");
-    } else {
-      // 「ドキュメント全体」が選択されている場合は、設定されたファイルパスを使用
-      finalPath = settings.FILE_PATH;
-    }
-
-    if (!finalPath) {
+    if (!e || !e.formInputs || !e.formInputs.selected_tabs) {
       throw new Error(
-        "Push先のファイルパスが設定されていません。タブを選択するか、設定画面でファイルパスを指定してください。"
+        "UIからタブ情報を取得できませんでした。ページを再読み込みしてお試しください。"
       );
     }
+    const selectedTabIds = e.formInputs.selected_tabs;
+    if (!selectedTabIds || selectedTabIds.length === 0) {
+      throw new Error("更新するタブを1つ以上選択してください。");
+    }
 
-    // ライブラリに渡す設定オブジェクトのファイルパスを最終的なパスで上書き
-    settings.FILE_PATH = finalPath;
+    // FEATURE: Generate timestamp before processing files.
+    const timestamp = new Date().toLocaleString("ja-JP");
+    const allDataObjects = [];
 
-    LIB.push(documentData, settings);
+    // FEATURE: Handle multiple selected tabs.
+    selectedTabIds.forEach((tabId) => {
+      const { frontMatter, documentData } = _buildDocumentData(tabId);
+      if (!frontMatter.file_path) {
+        const tabTitle = _findTabById(
+          DocumentApp.getActiveDocument().getTabs(),
+          tabId
+        ).getTitle();
+        throw new Error(
+          `タブ「${tabTitle}」のフロントマターに 'file_path' がありません。`
+        );
+      }
+      // FEATURE: Add the correct timestamp to the data being pushed.
+      frontMatter.last_pushed = timestamp;
+      allDataObjects.push({ frontMatter, documentData });
+    });
+
+    const settings = PropertiesService.getDocumentProperties().getProperties();
+
+    // Pass the array of data objects to the library.
+    LIB.push(allDataObjects, settings);
+
+    // FEATURE: Update the document's timestamp after a successful push.
+    selectedTabIds.forEach((tabId) => {
+      _updateLastPushedTimestamp(tabId, timestamp);
+    });
+
     return CardService.newActionResponseBuilder()
       .setNotification(
-        CardService.newNotification().setText("GitHubへのPushが完了しました。")
+        CardService.newNotification().setText(
+          `${selectedTabIds.length}個のタブのPushが完了しました。`
+        )
       )
       .build();
   } catch (err) {
@@ -122,23 +154,34 @@ function handlePushAction(e) {
 }
 
 /**
- * Action handler for the "Preview Markdown" button.
- * @param {Object} e The event object containing form inputs.
+ * Action handler for previewing. Only previews the first selected tab.
+ * @param {Object} e The event object.
  * @returns {ActionResponse}
  */
 function handlePreviewAction(e) {
   try {
-    const selectedTabName = e.formInputs.selected_tab[0];
-    const documentData = _buildDocumentData(selectedTabName);
-    const markdownContent = LIB.getMarkdown(documentData);
-
-    if (!markdownContent) {
+    if (!e || !e.formInputs || !e.formInputs.selected_tabs) {
+      throw new Error(
+        "UIからタブ情報を取得できませんでした。ページを再読み込みしてお試しください。"
+      );
+    }
+    const selectedTabIds = e.formInputs.selected_tabs;
+    if (!selectedTabIds || selectedTabIds.length === 0) {
+      throw new Error("プレビューするタブを選択してください。");
+    }
+    if (selectedTabIds.length > 1) {
       return CardService.newActionResponseBuilder()
         .setNotification(
-          CardService.newNotification().setText("選択された範囲は空です。")
+          CardService.newNotification().setText(
+            "プレビューは1つのタブしか選択できません。"
+          )
         )
         .build();
     }
+    const selectedTabId = selectedTabIds[0];
+
+    const { frontMatter, documentData } = _buildDocumentData(selectedTabId);
+    const markdownContent = LIB.getMarkdown({ frontMatter, documentData });
 
     const card = createPreviewCard(markdownContent);
     const navigation = CardService.newNavigation().pushCard(card);
@@ -157,84 +200,233 @@ function handlePreviewAction(e) {
 }
 
 /**
- * Parses the active Google Doc into a serializable data array,
- * focusing only on the content within the selected named range (tab).
- * @param {string} rangeName The name of the tab (NamedRange) to parse.
- * @returns {Array<Object>} A data array representing the document content.
- * @private
+ * Action handler for inserting front matter. Only works for a single selected tab.
+ * @param {Object} e The event object.
+ * @returns {ActionResponse}
  */
-function _buildDocumentData(rangeName) {
-  const doc = DocumentApp.getActiveDocument();
-  const data = [];
-  let elements = [];
+function handleInsertFrontMatterAction(e) {
+  try {
+    if (!e || !e.formInputs || !e.formInputs.selected_tabs) {
+      throw new Error(
+        "UIからタブ情報を取得できませんでした。ページを再読み込みしてお試しください。"
+      );
+    }
+    const selectedTabIds = e.formInputs.selected_tabs;
+    if (!selectedTabIds || selectedTabIds.length === 0) {
+      throw new Error("フロントマターを挿入するタブを選択してください。");
+    }
+    if (selectedTabIds.length > 1) {
+      return CardService.newActionResponseBuilder()
+        .setNotification(
+          CardService.newNotification().setText(
+            "フロントマターの挿入は1つのタブしか選択できません。"
+          )
+        )
+        .build();
+    }
+    const selectedTabId = selectedTabIds[0];
 
-  if (rangeName && rangeName !== "DOCUMENT_ROOT") {
-    const range = doc.getNamedRange(rangeName);
-    if (range) {
-      elements = range
-        .getRange()
-        .getRangeElements()
-        .map((re) => re.getElement());
-    }
-  } else {
-    const body = doc.getBody();
-    for (let i = 0; i < body.getNumChildren(); i++) {
-      elements.push(body.getChild(i));
-    }
+    _insertFrontMatterTable(selectedTabId);
+    return CardService.newActionResponseBuilder()
+      .setNotification(
+        CardService.newNotification().setText(
+          "フロントマターのテンプレートを挿入しました。"
+        )
+      )
+      .build();
+  } catch (err) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(
+        CardService.newNotification().setText(`エラー: ${err.message}`)
+      )
+      .build();
   }
+}
 
-  elements.forEach((element) => {
-    const type = element.getType();
+// --- 以下、変更のないヘルパー関数とUI関数 ---
+
+function _getActiveTabId(doc, tabs) {
+  const selection = doc.getSelection();
+  if (!selection) return null;
+  const rangeElements = selection.getRangeElements();
+  if (rangeElements.length === 0) return null;
+  const cursorElement = rangeElements[0].getElement();
+  function findTabForElement(tabs) {
+    for (const tab of tabs) {
+      const tabBody = tab.asDocumentTab().getBody();
+      if (isElementInBody(cursorElement, tabBody)) return tab.getId();
+      const childResult = findTabForElement(tab.getChildTabs());
+      if (childResult) return childResult;
+    }
+    return null;
+  }
+  function isElementInBody(element, body) {
+    let parent = element.getParent();
+    while (parent) {
+      if (parent.equals(body)) return true;
+      parent = parent.getParent();
+    }
+    return false;
+  }
+  return findTabForElement(tabs);
+}
+
+function _buildDocumentData(tabId) {
+  const doc = DocumentApp.getActiveDocument();
+  const tab = _findTabById(doc.getTabs(), tabId);
+  if (!tab) throw new Error(`指定されたタブ（ID: ${tabId}）が見つかりません。`);
+  const tabBody = tab.asDocumentTab().getBody();
+  const frontMatter = {};
+  const documentData = [];
+  const allElements = [];
+  for (let i = 0; i < tabBody.getNumChildren(); i++) {
+    allElements.push(tabBody.getChild(i));
+  }
+  let contentStartIndex = 0;
+  for (let i = 0; i < allElements.length; i++) {
+    const el = allElements[i];
+    if (
+      el.getType() === DocumentApp.ElementType.PARAGRAPH &&
+      el.asParagraph().getText().trim() === ""
+    )
+      continue;
+    if (el.getType() === DocumentApp.ElementType.TABLE) {
+      const table = el.asTable();
+      let startRow = 0;
+      if (table.getNumRows() > 0 && table.getRow(0).getNumCells() === 1)
+        startRow = 1;
+      for (let r = startRow; r < table.getNumRows(); r++) {
+        const row = table.getRow(r);
+        if (row.getNumCells() < 2) continue;
+        const key = row.getCell(0).getText().trim().toLowerCase();
+        const value = row.getCell(1).getText().trim();
+        if (key) frontMatter[key] = value;
+      }
+      contentStartIndex = i + 1;
+    }
+    break;
+  }
+  for (let i = contentStartIndex; i < allElements.length; i++) {
+    const element = allElements[i];
     let elementData = null;
-
-    switch (type) {
+    switch (element.getType()) {
       case DocumentApp.ElementType.PARAGRAPH:
-        const paragraph = element.asParagraph();
-        const inlineImage = paragraph.findElement(
-          DocumentApp.ElementType.INLINE_IMAGE
-        );
-
-        if (inlineImage) {
-          const imageElement = inlineImage.getElement().asInlineImage();
-          const blob = imageElement.getBlob();
+        const p = element.asParagraph();
+        const img = p.findElement(DocumentApp.ElementType.INLINE_IMAGE);
+        if (img) {
+          const imgEl = img.getElement().asInlineImage();
           elementData = {
             type: "IMAGE",
-            bytes: blob.getBytes(),
-            contentType: blob.getContentType(),
-            alt: imageElement.getAltDescription(),
+            bytes: imgEl.getBlob().getBytes(),
+            contentType: imgEl.getBlob().getContentType(),
+            alt: imgEl.getAltDescription(),
           };
-        } else if (paragraph.getText().trim() !== "") {
+        } else if (p.getText().trim() !== "") {
           elementData = {
             type: "PARAGRAPH",
-            text: _processTextAttributes(paragraph.asText()),
-            heading: paragraph.getHeading().toString(),
+            text: _processTextAttributes(p.asText()),
+            heading: p.getHeading().toString(),
           };
         }
         break;
-
       case DocumentApp.ElementType.LIST_ITEM:
-        const listItem = element.asListItem();
-        const glyph = listItem.getGlyphType();
+        const li = element.asListItem();
         elementData = {
           type: "LIST_ITEM",
-          text: _processTextAttributes(listItem.asText()),
-          nestingLevel: listItem.getNestingLevel(),
-          isNumbered:
-            glyph === DocumentApp.GlyphType.NUMBER ||
-            glyph === DocumentApp.GlyphType.LATIN_UPPER ||
-            glyph === DocumentApp.GlyphType.LATIN_LOWER,
+          text: _processTextAttributes(li.asText()),
+          nestingLevel: li.getNestingLevel(),
+          isNumbered: li.getGlyphType() === DocumentApp.GlyphType.NUMBER,
         };
         break;
     }
-
-    if (elementData) {
-      data.push(elementData);
-    }
-  });
-  return data;
+    if (elementData) documentData.push(elementData);
+  }
+  return { frontMatter, documentData };
 }
 
-// --- 以下、ヘルパー関数とUI関数 ---
+function _insertFrontMatterTable(tabId) {
+  const doc = DocumentApp.getActiveDocument();
+  const tab = _findTabById(doc.getTabs(), tabId);
+  if (!tab) throw new Error(`指定されたタブ（ID: ${tabId}）が見つかりません。`);
+  const tabBody = tab.asDocumentTab().getBody();
+  for (let i = 0; i < tabBody.getNumChildren(); i++) {
+    const child = tabBody.getChild(i);
+    if (
+      child.getType() === DocumentApp.ElementType.PARAGRAPH &&
+      child.asParagraph().getText().trim() === ""
+    )
+      continue;
+    if (child.getType() === DocumentApp.ElementType.TABLE)
+      throw new Error("このタブには既にフロントマターテーブルが存在します。");
+    break;
+  }
+  const tableData = [
+    ["▼ サイト制御用の設定です（このテーブルは消さないでください）", ""],
+    ["file_path", ""],
+    ["title", ""],
+    ["tags", ""],
+    ["last_pushed", ""],
+  ];
+  const table = tabBody.insertTable(0, tableData);
+  const headerRow = table.getRow(0);
+  headerRow.merge();
+  const headerCell = headerRow.getCell(0);
+  headerCell.setBackgroundColor("#FFF2CC");
+  headerCell
+    .getChild(0)
+    .asParagraph()
+    .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+}
+
+function _updateLastPushedTimestamp(tabId, timestamp) {
+  const doc = DocumentApp.getActiveDocument();
+  const tab = _findTabById(doc.getTabs(), tabId);
+  if (!tab) return;
+  const tabBody = tab.asDocumentTab().getBody();
+  for (let i = 0; i < tabBody.getNumChildren(); i++) {
+    const child = tabBody.getChild(i);
+    if (child.getType() === DocumentApp.ElementType.TABLE) {
+      const table = child.asTable();
+      let startRow = 0;
+      if (table.getNumRows() > 0 && table.getRow(0).getNumCells() === 1)
+        startRow = 1;
+      for (let j = startRow; j < table.getNumRows(); j++) {
+        const key = table.getRow(j).getCell(0).getText().trim().toLowerCase();
+        if (key === "last_pushed") {
+          table.getRow(j).getCell(1).setText(timestamp);
+          return;
+        }
+      }
+      break;
+    }
+    if (
+      child.getType() === DocumentApp.ElementType.PARAGRAPH &&
+      child.asParagraph().getText().trim() !== ""
+    )
+      break;
+  }
+}
+
+function _flattenTabs(tabs, level = 0) {
+  let flatList = [];
+  const indent = "  ".repeat(level);
+  tabs.forEach((tab) => {
+    flatList.push({ id: tab.getId(), title: indent + tab.getTitle() });
+    const childTabs = tab.getChildTabs();
+    if (childTabs.length > 0)
+      flatList = flatList.concat(_flattenTabs(childTabs, level + 1));
+  });
+  return flatList;
+}
+
+function _findTabById(tabs, tabId) {
+  for (const tab of tabs) {
+    if (tab.getId() === tabId) return tab;
+    const foundInChild = _findTabById(tab.getChildTabs(), tabId);
+    if (foundInChild) return foundInChild;
+  }
+  return null;
+}
 
 function createPreviewCard(markdownContent) {
   const section = CardService.newCardSection().addWidget(
@@ -257,9 +449,9 @@ function handleSettingsAction() {
 
 function createSettingsCard() {
   const settings = PropertiesService.getDocumentProperties().getProperties();
-  const saveAction = CardService.newAction().setFunctionName(
-    "handleSaveSettingsAction"
-  );
+  const saveAction = CardService.newAction()
+    .setFunctionName("handleSaveSettingsAction")
+    .setParameters({});
   const section = CardService.newCardSection()
     .setHeader("リポジトリ設定（全体）")
     .addWidget(
@@ -283,16 +475,9 @@ function createSettingsCard() {
     .addWidget(
       CardService.newTextInput()
         .setFieldName("CONTENT_ROOT_PATH")
-        .setTitle("コンテンツのルートディレクトリ (タブ使用時)")
+        .setTitle("コンテンツのルートディレクトリ")
         .setHint("例: content/posts")
         .setValue(settings.CONTENT_ROOT_PATH || "")
-    )
-    .addWidget(
-      CardService.newTextInput()
-        .setFieldName("FILE_PATH")
-        .setTitle("ファイルパス (タブ不使用時)")
-        .setHint("「ドキュメント全体」を更新する場合のフルパス")
-        .setValue(settings.FILE_PATH || "")
     )
     .addWidget(
       CardService.newTextInput()
@@ -329,6 +514,10 @@ function createSettingsCard() {
 }
 
 function handleSaveSettingsAction(e) {
+  if (!e || !e.formInputs)
+    throw new Error(
+      "UIから設定情報を取得できませんでした。ページを再読み込みしてお試しください。"
+    );
   const formInputs = e.formInputs;
   const docProps = PropertiesService.getDocumentProperties();
   const currentSettings = docProps.getProperties();
@@ -349,9 +538,7 @@ function handleSaveSettingsAction(e) {
 
 function _processTextAttributes(textElement) {
   const text = textElement.getText();
-  if (text === null || text.trim() === "") {
-    return text;
-  }
+  if (text === null || text.trim() === "") return text;
   const attributeIndices = textElement.getTextAttributeIndices();
   let markdown = "";
   let lastIndex = 0;

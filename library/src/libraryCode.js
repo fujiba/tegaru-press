@@ -1,66 +1,85 @@
 /**
  * @fileoverview Google Docs to GitHub Markdown Publisher - Library
- * @version 3.1.0
- * Fixed a character encoding issue (UTF-8) that caused garbled text for Japanese content.
+ * @version 3.2.0
+ * The push function now accepts an array of data objects to commit multiple files at once.
  */
 
 /**
  * Main function to execute the push process. (Public API)
- * @param {Array<Object>} documentData An array of objects representing the document's content.
+ * @param {Array<object>} dataObjects An array of objects, each containing frontMatter and documentData.
  * @param {object} settings The settings object from the document's properties.
  */
-function push(documentData, settings) {
-  const filePath = settings.FILE_PATH || "untitled.md";
-  const markdownFilePrefix = filePath
-    .split("/")
-    .pop()
-    .replace(/\.[^/.]+$/, "");
-  const imageSubDir = settings.IMAGE_PATH || "images";
-  const markdownDir = filePath.includes("/")
-    ? filePath.substring(0, filePath.lastIndexOf("/"))
-    : "";
+function push(dataObjects, settings) {
+  const allFilesToCommit = [];
+  const contentRoot = settings.CONTENT_ROOT_PATH || "";
 
-  const { markdown, images } = _convertDataToMarkdown(
-    documentData,
-    markdownDir,
-    imageSubDir,
-    markdownFilePrefix
-  );
+  dataObjects.forEach((dataObject) => {
+    if (!dataObject.frontMatter.file_path) {
+      // This should be caught by the caller, but as a safeguard:
+      throw new Error(
+        "An item was passed without a 'file_path' in its front matter."
+      );
+    }
 
-  if (!markdown) {
-    throw new Error("The document data is empty.");
-  }
+    const finalPath = [contentRoot, dataObject.frontMatter.file_path]
+      .filter(Boolean)
+      .join("/");
+    const markdownFilePrefix = finalPath
+      .split("/")
+      .pop()
+      .replace(/\.[^/.]+$/, "");
+    const imageSubDir = settings.IMAGE_PATH || "images";
+    const markdownDir = finalPath.includes("/")
+      ? finalPath.substring(0, finalPath.lastIndexOf("/"))
+      : "";
 
-  const filesToCommit = [];
-  images.forEach((imageFile) => {
-    filesToCommit.push({
-      path: imageFile.path,
-      content: imageFile.bytes,
-      isBinary: true, // Mark as binary
+    const { markdown, images } = _convertDataToMarkdown(
+      dataObject,
+      markdownDir,
+      imageSubDir,
+      markdownFilePrefix
+    );
+
+    if (!markdown) return; // Skip empty sections
+
+    // Add images for this section to the main list
+    images.forEach((imageFile) => {
+      allFilesToCommit.push({
+        path: imageFile.path,
+        content: imageFile.bytes,
+        isBinary: true,
+      });
+    });
+
+    // Add the markdown file for this section to the main list
+    allFilesToCommit.push({
+      path: finalPath,
+      content: markdown,
+      isBinary: false,
     });
   });
-  filesToCommit.push({
-    path: filePath,
-    content: markdown,
-    isBinary: false, // Mark as text
-  });
+
+  if (allFilesToCommit.length === 0) {
+    throw new Error("No content to push.");
+  }
 
   const commitMessage =
-    settings.COMMIT_MESSAGE || "Updated content from Google Docs";
-  _pushFilesAsSingleCommit(filesToCommit, commitMessage, settings);
+    settings.COMMIT_MESSAGE ||
+    `Update ${allFilesToCommit.length} file(s) from Google Docs`;
+  _pushFilesAsSingleCommit(allFilesToCommit, commitMessage, settings);
 }
 
 /**
  * Returns the generated Markdown for preview purposes. (Public API)
- * @param {Array<Object>} documentData An array of objects representing the document's content.
+ * @param {object} dataObject Contains frontMatter (object) and documentData (array).
  * @return {string} The generated Markdown content.
  */
-function getMarkdown(documentData) {
+function getMarkdown(dataObject) {
   const { markdown } = _convertDataToMarkdown(
-    documentData,
+    dataObject,
     "",
     "images",
-    "image"
+    "preview"
   );
   return markdown;
 }
@@ -68,19 +87,36 @@ function getMarkdown(documentData) {
 // --- Data Conversion Logic (Internal) ---
 
 /**
- * Converts the data array from the caller into Markdown text and a list of images.
+ * Converts the data object from the caller into a complete Markdown file content.
  * @private
  */
 function _convertDataToMarkdown(
-  data,
+  dataObject,
   markdownBaseDir,
   imageSubDir,
   markdownFilePrefix
 ) {
+  const { frontMatter, documentData } = dataObject;
   const images = [];
   let imageCounter = 0;
 
-  const markdownContent = data
+  let frontMatterString = "";
+  if (frontMatter && Object.keys(frontMatter).length > 0) {
+    frontMatterString += "---\n";
+    for (const key in frontMatter) {
+      if (key === "tags" && frontMatter[key].includes(",")) {
+        frontMatterString += `tags:\n`;
+        frontMatter[key].split(",").forEach((tag) => {
+          frontMatterString += `  - "${tag.trim()}"\n`;
+        });
+      } else {
+        frontMatterString += `${key}: "${frontMatter[key]}"\n`;
+      }
+    }
+    frontMatterString += "---\n\n";
+  }
+
+  const markdownBody = documentData
     .map((element) => {
       switch (element.type) {
         case "PARAGRAPH":
@@ -118,7 +154,7 @@ function _convertDataToMarkdown(
     })
     .join("\n\n");
 
-  return { markdown: markdownContent, images: images };
+  return { markdown: frontMatterString + markdownBody, images: images };
 }
 
 // --- Git Trees API Implementation (Internal) ---
@@ -151,16 +187,13 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
   const baseTreeSha = commitData.tree.sha;
 
   const treeElements = files.map((file) => {
-    // FIX: Specify UTF-8 for text files, but not for binary (image) files.
-    const encodedContent = file.isBinary
-      ? Utilities.base64Encode(file.content)
-      : Utilities.base64Encode(file.content, Utilities.Charset.UTF_8);
-
     const blobData = __githubApiRequest(
       `${apiBase}/git/blobs`,
       "POST",
       {
-        content: encodedContent,
+        content: file.isBinary
+          ? Utilities.base64Encode(file.content)
+          : Utilities.base64Encode(file.content, Utilities.Charset.UTF_8),
         encoding: "base64",
       },
       GITHUB_TOKEN
