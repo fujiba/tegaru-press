@@ -4,12 +4,12 @@
 name: Deploy Library and Update Template
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "library/**"
-      - "caller/**"
+  #push:
+  #branches:
+  #  - main
+  #  paths:
+  #    - "library/**"
+  #    - "caller/**"
   workflow_dispatch:
 
 jobs:
