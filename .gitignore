@@ -1,0 +1,43 @@
+# General
+###################
+# OS-generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Editor/IDE specific settings
+.vscode/
+.idea/
+
+# Environment variables
+# Keep environment variables out of git. Use a .sample file for templates.
+.env
+.env.*
+!.env.example
+.envrc
+
+
+# Terraform
+###################
+# Local state files. Use a remote backend for team collaboration.
+*.tfstate
+*.tfstate.backup
+
+# Sensitive variable files. Use .tfvars.sample instead.
+terraform.tfvars
+*.auto.tfvars
+
+# Terraform runtime files
+.terraform/
+crash.log
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules
+
+# clasp (for Google Apps Script in /apps-script)
+.clasp.json
+caller/src/appsscript.json
+addon/src/appsscript.json
