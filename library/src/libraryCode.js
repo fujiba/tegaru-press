@@ -103,58 +103,111 @@ function _convertDataToMarkdown(
   let frontMatterString = "";
   if (frontMatter && Object.keys(frontMatter).length > 0) {
     frontMatterString += "---\n";
+
+    // Handle date: Parse user input or set to current ISO 8601 time if empty.
+    if (frontMatter.date === undefined || frontMatter.date === "") {
+      frontMatter.date = new Date().toISOString();
+    } else {
+      const parsedDate = new Date(frontMatter.date);
+      // Check if the parsed date is valid.
+      if (!isNaN(parsedDate.getTime())) {
+        frontMatter.date = parsedDate.toISOString();
+      } // If parsing fails, the original string is kept, which might cause an error in the SSG, alerting the user.
+    }
+
     for (const key in frontMatter) {
-      if (key === "tags" && frontMatter[key].includes(",")) {
-        frontMatterString += `tags:\n`;
-        frontMatter[key].split(",").forEach((tag) => {
-          frontMatterString += `  - "${tag.trim()}"\n`;
+      const value = frontMatter[key];
+      const arrayKeys = ["tags", "authors", "categories"];
+
+      if (arrayKeys.includes(key) && value && value.includes(",")) {
+        frontMatterString += `${key}:\n`;
+        value.split(",").forEach((item) => {
+          frontMatterString += `  - "${item.trim()}"\n`;
         });
+      } else if (key === "draft" && (value === "true" || value === "false")) {
+        frontMatterString += `${key}: ${value}\n`; // Don't quote boolean values
       } else {
-        frontMatterString += `${key}: "${frontMatter[key]}"\n`;
+        frontMatterString += `${key}: "${value}"\n`;
       }
     }
     frontMatterString += "---\n\n";
   }
 
-  const markdownBody = documentData
-    .map((element) => {
-      switch (element.type) {
-        case "PARAGRAPH":
-          switch (element.heading) {
-            case "HEADING1":
-              return `# ${element.text}`;
-            case "HEADING2":
-              return `## ${element.text}`;
-            case "HEADING3":
-              return `### ${element.text}`;
-            default:
-              return element.text;
-          }
-        case "LIST_ITEM":
-          const indent = "  ".repeat(element.nestingLevel || 0);
-          const marker = element.isNumbered ? "1." : "-";
-          return `${indent}${marker} ${element.text}`;
-        case "IMAGE":
-          imageCounter++;
-          const extension = element.contentType
-            .split("/")[1]
-            .replace("jpeg", "jpg");
-          const imageName = `${markdownFilePrefix}_${imageCounter}.${extension}`;
+  const markdownBody = documentData.reduce((acc, element, index) => {
+    let markdownChunk = "";
+    switch (element.type) {
+      case "PARAGRAPH":
+        switch (element.heading) {
+          case "HEADING1":
+            markdownChunk = `# ${_applyMarkdownToSegments(element.text)}`;
+            break;
+          case "HEADING2":
+            markdownChunk = `## ${_applyMarkdownToSegments(element.text)}`;
+            break;
+          case "HEADING3":
+            markdownChunk = `### ${_applyMarkdownToSegments(element.text)}`;
+            break;
+          default:
+            markdownChunk = _applyMarkdownToSegments(element.text);
+        }
+        break;
+      case "LIST_ITEM":
+        const indent = "  ".repeat(element.nestingLevel || 0);
+        const marker = element.isNumbered ? "1." : "-";
+        markdownChunk = `${indent}${marker} ${_applyMarkdownToSegments(element.text)}`;
+        break;
+      case "IMAGE":
+        imageCounter++;
+        const extension = element.contentType.split("/")[1].replace("jpeg", "jpg");
+        const imageName = `${markdownFilePrefix}_${imageCounter}.${extension}`;
+        const linkPath = `./${imageSubDir}/${imageName}`;
+        const uploadPath = (markdownBaseDir ? `${markdownBaseDir}/` : "") + `${imageSubDir}/${imageName}`;
+        images.push({ path: uploadPath, bytes: element.bytes });
+        markdownChunk = `!${element.alt || imageName}`;
+        break;
+    }
 
-          const linkPath = `./${imageSubDir}/${imageName}`;
-          const uploadPath =
-            (markdownBaseDir ? `${markdownBaseDir}/` : "") +
-            `${imageSubDir}/${imageName}`;
+    if (!markdownChunk) {
+      return acc; // If the current chunk is empty, do nothing.
+    }
+    if (!acc) {
+      return markdownChunk; // If accumulator is empty (first element), just return the chunk.
+    }
 
-          images.push({ path: uploadPath, bytes: element.bytes });
-          return `![${element.alt || imageName}](${linkPath})`;
-        default:
-          return "";
-      }
-    })
-    .join("\n\n");
+    // Determine the separator. Use a single newline between consecutive list items.
+    const prevElement = documentData[index - 1];
+    const separator = (prevElement && prevElement.type === "LIST_ITEM" && element.type === "LIST_ITEM") ? "\n" : "\n\n";
+    return `${acc}${separator}${markdownChunk}`;
+  }, "");
 
   return { markdown: frontMatterString + markdownBody, images: images };
+}
+
+/**
+ * Applies markdown styling to a text segment based on its attributes.
+ * @param {Array<Object>} textSegments An array of text segments with attributes.
+ * @returns {string} The fully styled markdown text.
+ * @private
+ */
+function _applyMarkdownToSegments(textSegments) {
+  // Handle plain string for backward compatibility or if data is malformed.
+  if (!textSegments || !Array.isArray(textSegments)) return textSegments || "";
+
+  return textSegments.map(segment => {
+    let styledText = segment.text;
+    const attributes = segment.attributes || {};
+    if (attributes["BOLD"] && attributes["ITALIC"]) {
+      styledText = `***${styledText}***`;
+    } else if (attributes["BOLD"]) {
+      styledText = `**${styledText}**`;
+    } else if (attributes["ITALIC"]) {
+      styledText = `*${styledText}*`;
+    }
+    if (attributes["LINK_URL"]) {
+      styledText = `[${styledText}](${attributes["LINK_URL"]})`;
+    }
+    return styledText;
+  }).join("");
 }
 
 // --- Git Trees API Implementation (Internal) ---

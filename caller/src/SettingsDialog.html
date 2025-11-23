@@ -86,13 +86,25 @@
         />
       </div>
       <div class="form-group">
-        <label for="file-path">ファイルパス</label>
+        <label for="branch-name">ブランチ名</label>
         <input
           type="text"
-          id="file-path"
-          name="FILE_PATH"
-          value="<?= settings.FILE_PATH || '' ?>"
+          id="branch-name"
+          name="BRANCH_NAME"
+          value="<?= settings.BRANCH_NAME || '' ?>"
         />
+        <small>指定しない場合はリポジトリのデフォルトブランチにPushします。</small>
+      </div>
+      <div class="form-group">
+        <label for="content-root-path">コンテンツのルートディレクトリ</label>
+        <input
+          type="text"
+          id="content-root-path"
+          name="CONTENT_ROOT_PATH"
+          value="<?= settings.CONTENT_ROOT_PATH || '' ?>"
+          placeholder="例: content/posts"
+        />
+        <small>リポジトリのルートからのパスです。各タブの `file_path` は、ここからの相対パスになります。</small>
       </div>
       <div class="form-group">
         <label for="commit-message">コミットメッセージ</label>
@@ -146,7 +158,8 @@
           const formData = {
             GITHUB_USER: this.elements.GITHUB_USER.value,
             GITHUB_REPO: this.elements.GITHUB_REPO.value,
-            FILE_PATH: this.elements.FILE_PATH.value,
+            BRANCH_NAME: this.elements.BRANCH_NAME.value,
+            CONTENT_ROOT_PATH: this.elements.CONTENT_ROOT_PATH.value,
             COMMIT_MESSAGE: this.elements.COMMIT_MESSAGE.value,
           };
 
