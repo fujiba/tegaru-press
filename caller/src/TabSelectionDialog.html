@@ -83,8 +83,15 @@
 
         const selected = Array.from(this.elements.selected_tabs).filter(el => el.checked).map(el => el.value);
         const action = "<?= action ?>";
-        const serverFunction = action === 'push' ? '_executePushForTabs' : '_executePreviewForTab';
-        google.script.run.withSuccessHandler(() => google.script.host.close())[serverFunction](selected);
+
+        // actionの値に応じて、正しいサーバー側関数を直接呼び出す
+        if (action === 'push') {
+          google.script.run.withSuccessHandler(() => google.script.host.close()).executePushFromDialog(selected);
+        } else {
+          // プレビューの場合は、ダイアログを閉じる前にプレビューダイアログが表示されるのを待つ
+          // そのため、withSuccessHandlerで即時closeしない
+          google.script.run.executePreviewFromDialog(selected);
+        }
       });
     </script>
   </body>

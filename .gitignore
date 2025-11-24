@@ -41,3 +41,4 @@ node_modules
 .clasp.json
 caller/src/appsscript.json
 addon/src/appsscript.json
+/.gemini/
