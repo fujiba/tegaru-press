@@ -477,11 +477,13 @@ function _convertDataToMarkdown(
       const value = frontMatter[key];
       const arrayKeys = ["tags", "authors", "categories"];
 
-      if (arrayKeys.includes(key) && value && value.includes(",")) {
+      if (arrayKeys.includes(key)) {
         frontMatterString += `${key}:\n`;
-        value.split(",").forEach((item) => {
-          frontMatterString += `  - "${item.trim()}"\n`;
-        });
+        if (value && value.includes(",")) {
+          value.split(",").forEach((item) => {
+            frontMatterString += `  - "${item.trim()}"\n`;
+          });
+        }
       } else if (key === "draft" && (value === "true" || value === "false")) {
         frontMatterString += `${key}: ${value}\n`; // Don't quote boolean values
       } else {
