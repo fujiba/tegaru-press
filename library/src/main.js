@@ -162,16 +162,16 @@ function executeInsertFrontMatter(formObject) {
 
     const tableData = [
       ["キー", "値", "説明"],
-      ["file_path", filePath, "サイトのルートからのファイルパス (例: posts/my-post.md)"],
-      ["title", title, "記事のタイトル"],
+      ["file_path", filePath, "サイトのルートからのファイルパス (例: posts/my-post.md)(*必須)"],
+      ["title", title, "記事のタイトル(*必須)"],
       ["subtitle", "", "記事のサブタイトル（任意）"],
-      ["description", "", "SEOや検索結果に表示される説明文"],
-      ["summary", "", "記事一覧などで表示される短い要約"],
-      ["authors", "", "著者名 (複数名はカンマ区切り)"],
-      ["tags", "", "タグ (複数指定はカンマ区切り)"],
-      ["categories", "", "カテゴリ (複数指定はカンマ区切り)"],
-      ["date", formattedDateTime, "公開日時 (例: 2023/10/27 10:00)。空欄の場合はPush時の日時。"],
-      ["draft", "false", "'true'にすると下書き扱いになります"],
+      ["description", "", "SEOや検索結果に表示される説明文(任意)"],
+      ["summary", "", "記事一覧などで表示される短い要約(任意)"],
+      ["authors", "", "著者名 (複数名はカンマ区切り)(任意)"],
+      ["tags", "", "タグ (複数指定はカンマ区切り)(任意)"],
+      ["categories", "", "カテゴリ (複数指定はカンマ区切り)(任意)"],
+      ["date", formattedDateTime, "公開日時 (例: 2023/10/27 10:00)。空欄の場合はPush時の日時。(*必須)"],
+      ["draft", "false", "'true'にすると下書き扱いになります(*必須)"],
     ];
 
     const table = body.insertTable(0, tableData);
