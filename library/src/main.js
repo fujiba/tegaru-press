@@ -1,9 +1,75 @@
 /**
  * @fileoverview Google Docs to GitHub Markdown Publisher - Library
- * @version 4.0.0
+ * @version 4.1.0
  * Major architectural change: The library now accepts a Google Docs object
  * directly and handles all parsing and processing internally.
+ * Includes security enhancements for GitHub Token encryption.
  */
+
+// --- Security Helpers (Internal) ---
+
+/**
+ * ScriptPropertiesから暗号化キーを取得します。
+ * キーが存在しない場合は自動生成して保存します。
+ * @returns {string} 暗号化キー
+ * @private
+ */
+function _getEncryptionSecret() {
+  const props = PropertiesService.getScriptProperties();
+  let secret = props.getProperty('ENCRYPTION_SECRET');
+  
+  if (!secret) {
+    // 初回実行時など、キーがない場合はUUIDを生成して保存する
+    secret = Utilities.getUuid();
+    props.setProperty('ENCRYPTION_SECRET', secret);
+    // 初回生成時はログに残しておくとデバッグ時に便利かも（本番運用では消してもOK）
+    console.log("Initialized new encryption secret.");
+  }
+  
+  return secret;
+}
+
+/**
+ * AES暗号化 (CryptoJS使用)
+ * @param {string} text 平文
+ * @returns {string} 暗号化された文字列
+ * @private
+ */
+function _encrypt(text) {
+  if (!text) return "";
+  try {
+    const secret = _getEncryptionSecret();
+    return cCryptoGS.CryptoJS.AES.encrypt(text, secret).toString();
+  } catch (e) {
+    console.error("Encryption failed:", e);
+    throw new Error("暗号化処理に失敗しました。");
+  }
+}
+
+/**
+ * AES復号化 (CryptoJS使用)
+ * @param {string} encryptedText 暗号文
+ * @returns {string} 復号された平文
+ * @private
+ */
+function _decrypt(encryptedText) {
+  if (!encryptedText) return "";
+  try {
+    const secret = _getEncryptionSecret();
+    const bytes = cCryptoGS.CryptoJS.AES.decrypt(encryptedText, secret);
+    const originalText = bytes.toString(cCryptoGS.CryptoJS.enc.Utf8);
+    
+    // 復号結果が空（キー不一致などでゴミデータになった場合）のチェック
+    if (!originalText && encryptedText.length > 0) {
+      throw new Error("Invalid decryption result");
+    }
+    return originalText;
+  } catch (e) {
+    console.error("Decryption failed:", e);
+    throw new Error("GitHubトークンの復号に失敗しました。ScriptPropertiesのキーが変更された可能性があります。");
+  }
+}
+
 
 /**
  * Main function to execute the push process. (Public API)
@@ -109,6 +175,8 @@ function getMarkdown(doc, selectedTabId) {
  * @returns {object} 保存されている設定オブジェクト。
  */
 function getSettings() {
+  // 暗号化されたトークンを含むプロパティをそのまま返す
+  // UI側ではパスワードフィールドに入力されるか、そもそも表示されないため安全
   return PropertiesService.getDocumentProperties().getProperties();
 }
 
@@ -121,11 +189,20 @@ function getSettings() {
 function saveSettings(formObject) {
   const docProps = PropertiesService.getDocumentProperties();
   const currentSettings = docProps.getProperties();
+  
+  // 既存の設定とマージ
   const newSettings = { ...currentSettings, ...formObject };
-  // トークンが空で送信された場合、既存の値を上書きしない
-  if (!formObject.GITHUB_TOKEN) {
+  
+  // GITHUB_TOKENの処理
+  if (formObject.GITHUB_TOKEN) {
+    // ユーザーが新しく入力した場合 -> 暗号化して保存
+    // 暗号化キーがない場合はここで自動生成される
+    newSettings.GITHUB_TOKEN = _encrypt(formObject.GITHUB_TOKEN);
+  } else {
+    // 空欄の場合 -> 既存の値を維持 (暗号化済みのまま)
     newSettings.GITHUB_TOKEN = currentSettings.GITHUB_TOKEN || "";
   }
+  
   docProps.setProperties(newSettings);
   return true;
 }
@@ -590,7 +667,11 @@ function _findTabById(tabs, tabId) {
  * @private
  */
 function _pushFilesAsSingleCommit(files, commitMessage, settings) {
-  const { GITHUB_USER, GITHUB_REPO, GITHUB_TOKEN } = settings;
+  // Decrypt the token before use
+  const decryptedToken = _decrypt(settings.GITHUB_TOKEN);
+  
+  // Use decrypted token for all API calls
+  const { GITHUB_USER, GITHUB_REPO } = settings;
   const branch = settings.BRANCH_NAME || "main";
 
   const repoName = GITHUB_REPO.split("/")
@@ -602,14 +683,14 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     `${apiBase}/git/refs/heads/${branch}`,
     "GET",
     null,
-    GITHUB_TOKEN
+    decryptedToken
   );
   const latestCommitSha = refData.object.sha;
   const commitData = __githubApiRequest(
     `${apiBase}/git/commits/${latestCommitSha}`,
     "GET",
     null,
-    GITHUB_TOKEN
+    decryptedToken
   );
   const baseTreeSha = commitData.tree.sha;
 
@@ -623,7 +704,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
           : Utilities.base64Encode(file.content, Utilities.Charset.UTF_8),
         encoding: "base64",
       },
-      GITHUB_TOKEN
+      decryptedToken
     );
 
     return { path: file.path, mode: "100644", type: "blob", sha: blobData.sha };
@@ -636,7 +717,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
       base_tree: baseTreeSha,
       tree: treeElements,
     },
-    GITHUB_TOKEN
+    decryptedToken
   );
 
   const newCommitData = __githubApiRequest(
@@ -647,7 +728,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
       tree: newTreeData.sha,
       parents: [latestCommitSha],
     },
-    GITHUB_TOKEN
+    decryptedToken
   );
 
   __githubApiRequest(
@@ -656,7 +737,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     {
       sha: newCommitData.sha,
     },
-    GITHUB_TOKEN
+    decryptedToken
   );
 }
 
