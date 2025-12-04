@@ -96,20 +96,20 @@ function _convertDataToMarkdown(
       case "TABLE":
         if (element.rows && element.rows.length > 0) {
           // テーブルの各行を処理
-          const tableMarkdown = element.rows.map((row, rowIndex) => {
-             // セルごとのフォーマット関数
-             const formatCell = (segments) => {
-                 // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
-                 let md = _applyMarkdownToSegments(segments);
-                 // Markdownテーブル内で壊れる文字をエスケープ/置換
-                 // パイプ | はエスケープ
-                 md = md.replace(/\|/g, '\\|');
-                 // 改行は <br> タグに置換 (Markdownのテーブルセル内では改行コードが使えないため)
-                 // \r, \n, \v (垂直タブ) をすべてキャッチして変換
-                 md = md.replace(/[\r\n\v]+/g, '<br>');
-                 return md;
-             };
+          // セルごとのフォーマット関数
+          const formatCell = (segments) => {
+              // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
+              let md = _applyMarkdownToSegments(segments);
+              // Markdownテーブル内で壊れる文字をエスケープ/置換
+              // パイプ | はエスケープ
+              md = md.replace(/\|/g, '\\|');
+              // 改行は <br> タグに置換 (Markdownのテーブルセル内では改行コードが使えないため)
+              // \r, \n, \v (垂直タブ) をすべてキャッチして変換
+              md = md.replace(/[\r\n\v]+/g, '<br>');
+              return md;
+          };
              
+          const tableMarkdown = element.rows.map((row, rowIndex) => {
              // 行の組み立て: | cell1 | cell2 | ... |
              const formattedRow = `| ${row.map(formatCell).join(' | ')} |`;
              
