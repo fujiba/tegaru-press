@@ -226,7 +226,7 @@ function _parseElement(child) {
               if (k > 0) {
                 cellSegments.push({ text: "\n", attributes: {} });
               }
-              cellSegments = cellSegments.concat(segments);
+              cellSegments.push(...segments);
             }
           }
           rowData.push(cellSegments);
