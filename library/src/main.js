@@ -1,77 +1,16 @@
 /**
  * @fileoverview Google Docs to GitHub Markdown Publisher - Library
- * @version 4.2.3
- * Major architectural change: The library now accepts a Google Docs object
- * directly and handles all parsing and processing internally.
- * Includes security enhancements for GitHub Token encryption.
- * Fixes preview source readability by separating raw markdown and image data.
- * Adjusts preview dialog size for better compatibility.
+ * @version 4.3.0
+ * Refactored to separate concerns into multiple files for better maintainability.
+ * This file now acts as the main entry point and orchestrator.
  */
 
-// --- Security Helpers (Internal) ---
-
-/**
- * ScriptPropertiesから暗号化キーを取得します。
- * キーが存在しない場合は自動生成して保存します。
- * @returns {string} 暗号化キー
- * @private
- */
-function _getEncryptionSecret() {
-  const props = PropertiesService.getScriptProperties();
-  let secret = props.getProperty('ENCRYPTION_SECRET');
-  
-  if (!secret) {
-    // 初回実行時など、キーがない場合はUUIDを生成して保存する
-    secret = Utilities.getUuid();
-    props.setProperty('ENCRYPTION_SECRET', secret);
-    // 初回生成時はログに残しておくとデバッグ時に便利かも（本番運用では消してもOK）
-    console.log("Initialized new encryption secret.");
-  }
-  
-  return secret;
-}
-
-/**
- * AES暗号化 (CryptoJS使用)
- * @param {string} text 平文
- * @returns {string} 暗号化された文字列
- * @private
- */
-function _encrypt(text) {
-  if (!text) return "";
-  try {
-    const secret = _getEncryptionSecret();
-    return cCryptoGS.CryptoJS.AES.encrypt(text, secret).toString();
-  } catch (e) {
-    console.error("Encryption failed:", e);
-    throw new Error("暗号化処理に失敗しました。");
-  }
-}
-
-/**
- * AES復号化 (CryptoJS使用)
- * @param {string} encryptedText 暗号文
- * @returns {string} 復号された平文
- * @private
- */
-function _decrypt(encryptedText) {
-  if (!encryptedText) return "";
-  try {
-    const secret = _getEncryptionSecret();
-    const bytes = cCryptoGS.CryptoJS.AES.decrypt(encryptedText, secret);
-    const originalText = bytes.toString(cCryptoGS.CryptoJS.enc.Utf8);
-    
-    // 復号結果が空（キー不一致などでゴミデータになった場合）のチェック
-    if (!originalText && encryptedText.length > 0) {
-      throw new Error("Invalid decryption result");
-    }
-    return originalText;
-  } catch (e) {
-    console.error("Decryption failed:", e);
-    throw new Error("GitHubトークンの復号に失敗しました。ScriptPropertiesのキーが変更された可能性があります。");
-  }
-}
-
+// NOTE: 実装ロジックは以下のファイルに分離されました：
+// - Security.js: 暗号化/復号化
+// - Settings.js: 設定管理
+// - DocumentParser.js: ドキュメント解析
+// - MarkdownBuilder.js: Markdown生成
+// - GitHubApi.js: GitHub通信
 
 /**
  * Main function to execute the push process. (Public API)
@@ -79,18 +18,23 @@ function _decrypt(encryptedText) {
  * @param {Array<string>|null} selectedTabIds An array of tab IDs to push. If null, the main body is used.
  */
 function push(doc, selectedTabIds) {
-  const settings = PropertiesService.getDocumentProperties().getProperties();
+  // Settings.jsから呼び出し
+  const settings = getSettings(); 
+  
+  // DocumentParser.jsから呼び出し
   const allDataObjects = _buildAllDocumentData(doc, selectedTabIds);
 
   if (allDataObjects.length === 0) {
     throw new Error("Pushするコンテンツがありません。");
   }
 
+  // 下のローカル関数呼び出し
   _pushDataObjects(allDataObjects, settings);
 }
 
 /**
  * Processes and pushes an array of data objects to GitHub.
+ * @private
  */
 function _pushDataObjects(dataObjects, settings) {
   const allFilesToCommit = [];
@@ -98,7 +42,6 @@ function _pushDataObjects(dataObjects, settings) {
 
   dataObjects.forEach((dataObject) => {
     if (!dataObject.frontMatter.file_path) {
-      // This should be caught by the caller, but as a safeguard:
       throw new Error(
         "An item was passed without a 'file_path' in its front matter."
       );
@@ -116,6 +59,7 @@ function _pushDataObjects(dataObjects, settings) {
       ? finalPath.substring(0, finalPath.lastIndexOf("/"))
       : "";
 
+    // MarkdownBuilder.jsから呼び出し
     const { markdown, images } = _convertDataToMarkdown(
       dataObject,
       markdownDir,
@@ -125,7 +69,7 @@ function _pushDataObjects(dataObjects, settings) {
 
     if (!markdown) return; // Skip empty sections
 
-    // Add images for this section to the main list
+    // 画像ファイルの追加
     images.forEach((imageFile) => {
       allFilesToCommit.push({
         path: imageFile.path,
@@ -134,7 +78,7 @@ function _pushDataObjects(dataObjects, settings) {
       });
     });
 
-    // Add the markdown file for this section to the main list
+    // Markdownファイルの追加
     allFilesToCommit.push({
       path: finalPath,
       content: markdown,
@@ -149,19 +93,21 @@ function _pushDataObjects(dataObjects, settings) {
   const commitMessage =
     settings.COMMIT_MESSAGE ||
     `Update ${allFilesToCommit.length} file(s) from Google Docs`;
+    
+  // GitHubApi.jsから呼び出し
   _pushFilesAsSingleCommit(allFilesToCommit, commitMessage, settings);
 }
 
 /**
  * Returns the generated Markdown for preview purposes. (Public API)
- * 以前のようにMarkdownテキストのみを返します（Base64画像は含みません）。
- * プレビュー用のデータ取得には内部で getPreviewData を使用してください。
  * @param {GoogleAppsScript.Document.Document} doc The Google Document object to process.
  * @param {string|null} selectedTabId The ID of the tab to preview.
  * @return {string} The generated Markdown content.
  */
 function getMarkdown(doc, selectedTabId) {
+  // DocumentParser.jsから呼び出し
   const dataObject = _buildDocumentData(doc, selectedTabId);
+  // MarkdownBuilder.jsから呼び出し
   const { markdown } = _convertDataToMarkdown(
     dataObject,
     "",
@@ -169,56 +115,6 @@ function getMarkdown(doc, selectedTabId) {
     "preview"
   );
   return markdown;
-}
-
-/**
- * Returns the generated Markdown and images for preview purposes.
- * Internal helper for executePreviewFromDialog.
- * @return {object} { markdown: string, images: Array }
- */
-function _getPreviewData(doc, selectedTabId) {
-  const dataObject = _buildDocumentData(doc, selectedTabId);
-  return _convertDataToMarkdown(dataObject, "", "images", "preview");
-}
-
-// --- Settings Functions (Public API for Caller) ---
-
-/**
- * 設定を取得します。
- * (Public API)
- * @returns {object} 保存されている設定オブジェクト。
- */
-function getSettings() {
-  // 暗号化されたトークンを含むプロパティをそのまま返す
-  // UI側ではパスワードフィールドに入力されるか、そもそも表示されないため安全
-  return PropertiesService.getDocumentProperties().getProperties();
-}
-
-/**
- * 設定をドキュメントプロパティに保存します。(UIから呼ばれる)
- * (Public API)
- * @param {object} formObject HTMLフォームから渡される設定オブジェクト。
- * @returns {boolean} 成功したかどうか。
- */
-function saveSettings(formObject) {
-  const docProps = PropertiesService.getDocumentProperties();
-  const currentSettings = docProps.getProperties();
-  
-  // 既存の設定とマージ
-  const newSettings = { ...currentSettings, ...formObject };
-  
-  // GITHUB_TOKENの処理
-  if (formObject.GITHUB_TOKEN) {
-    // ユーザーが新しく入力した場合 -> 暗号化して保存
-    // 暗号化キーがない場合はここで自動生成される
-    newSettings.GITHUB_TOKEN = _encrypt(formObject.GITHUB_TOKEN);
-  } else {
-    // 空欄の場合 -> 既存の値を維持 (暗号化済みのまま)
-    newSettings.GITHUB_TOKEN = currentSettings.GITHUB_TOKEN || "";
-  }
-  
-  docProps.setProperties(newSettings);
-  return true;
 }
 
 // --- Execution Functions (Called from Caller Handlers) ---
@@ -235,11 +131,10 @@ function executeInsertFrontMatter(formObject) {
     }
 
     // --- データ生成ロジック ---
-    const settings = PropertiesService.getDocumentProperties().getProperties();
+    const settings = getSettings();
     const contentRoot = settings.CONTENT_ROOT_PATH || "";
     const dateObj = new Date(date);
     const formattedDate = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyyMMdd");
-    const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     const filePath = [`${formattedDate}-${title}`, "index.md"].filter(Boolean).join("/");
     const formattedDateTime = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm:ss");
     // --- データ生成ロジックここまで ---
@@ -314,7 +209,7 @@ function executePreviewFromDialog(selectedTabId) {
     const doc = DocumentApp.getActiveDocument();
     const tabId = Array.isArray(selectedTabId) ? selectedTabId[0] : selectedTabId;
     
-    // Markdownと画像データを分けて取得
+    // MarkdownBuilder.jsから呼び出し
     const { markdown, images } = _getPreviewData(doc, tabId);
 
     if (!markdown || markdown.trim() === "---") {
@@ -322,7 +217,6 @@ function executePreviewFromDialog(selectedTabId) {
       return;
     }
 
-    // プレビュー用に画像をBase64エンコードしてJSONで渡す準備
     const imagePayload = images.map(image => {
       let mimeType = "image/jpeg";
       if (image.path.toLowerCase().endsWith(".png")) {
@@ -331,616 +225,21 @@ function executePreviewFromDialog(selectedTabId) {
         mimeType = "image/gif";
       }
       return {
-        path: "./" + image.path, // Markdown内の相対パスと合わせる
+        path: "./" + image.path,
         data: `data:${mimeType};base64,${Utilities.base64Encode(image.bytes)}`
       };
     });
 
-    // HTMLテンプレートを構築
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <base target="_top">
-          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
-          <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-          <style>
-            body { 
-              margin: 0; 
-              padding: 0; 
-              display: flex; 
-              flex-direction: column; 
-              height: 100vh; 
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            }
-            .tabs { 
-              display: flex; 
-              border-bottom: 1px solid #d0d7de; 
-              background: #f6f8fa; 
-              padding: 0 10px;
-            }
-            .tab { 
-              padding: 10px 15px; 
-              cursor: pointer; 
-              border: 1px solid transparent; 
-              border-bottom: none;
-              background: none; 
-              outline: none; 
-              font-size: 14px;
-              color: #57606a;
-              margin-top: 5px;
-              border-radius: 6px 6px 0 0;
-            }
-            .tab:hover {
-              color: #24292f;
-            }
-            .tab.active { 
-              background: #fff; 
-              border-color: #d0d7de; 
-              border-bottom-color: #fff; 
-              color: #24292f; 
-              font-weight: 600;
-              margin-bottom: -1px; /* Overlap border */
-            }
-            .tab-content { 
-              flex: 1; 
-              overflow: auto; 
-              display: none; 
-              padding: 20px;
-            }
-            .tab-content.active { 
-              display: block; 
-            }
-            #raw-content {
-              width: 100%;
-              height: 100%;
-              border: none;
-              resize: none;
-              font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
-              font-size: 12px;
-              color: #24292f;
-              white-space: pre-wrap;
-              background-color: #f6f8fa;
-              padding: 10px;
-              box-sizing: border-box;
-              border-radius: 6px;
-            }
-            .markdown-body {
-              box-sizing: border-box;
-              width: 100%; /* 幅いっぱいに */
-              margin: 0 auto;
-              background-color: #fff;
-              color: #24292f; 
-            }
-            /* 画像がデカすぎるときのために最大幅制限 */
-            .markdown-body img {
-              max-width: 100%;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="tabs">
-            <button class="tab active" onclick="switchTab('preview', this)">Preview</button>
-            <button class="tab" onclick="switchTab('code', this)">Markdown</button>
-          </div>
-          
-          <div id="preview-view" class="tab-content active markdown-body"></div>
-          <div id="code-view" class="tab-content">
-            <textarea id="raw-content" readonly><?= content ?></textarea>
-          </div>
-          
-          <!-- 画像データを不可視要素として保持 -->
-          <script id="image-data" type="application/json">
-            <?!= images ?>
-          </script>
-      
-          <script>
-            // Initial Render
-            const rawContent = document.getElementById('raw-content').value;
-            const images = JSON.parse(document.getElementById('image-data').textContent);
-            
-            // --- プレビュー生成ロジック ---
-            let previewMarkdown = rawContent;
-            
-            // 1. フロントマターを除去
-            previewMarkdown = previewMarkdown.replace(/^---\\n[\\s\\S]*?\\n---\\n/, '');
-            
-            // 2. 画像パスをBase64に置換
-            // Markdownのパスは "./images/..." になっているので完全一致で置換
-            images.forEach(img => {
-              // split/joinで全置換
-              previewMarkdown = previewMarkdown.split(img.path).join(img.data);
-            });
-            
-            // 3. HTML変換
-            document.getElementById('preview-view').innerHTML = marked.parse(previewMarkdown);
-      
-            function switchTab(mode, btn) {
-              // Reset tabs
-              document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-              btn.classList.add('active');
-              
-              // Reset views
-              document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-              
-              if (mode === 'preview') {
-                document.getElementById('preview-view').classList.add('active');
-              } else {
-                document.getElementById('code-view').classList.add('active');
-              }
-            }
-          </script>
-        </body>
-      </html>
-    `;
-
-    const template = HtmlService.createTemplate(htmlContent);
+    // HTMLテンプレートをファイルから読み込む！ここが今回の外出しポイント！
+    const template = HtmlService.createTemplateFromFile("PreviewDialog");
     template.content = markdown;
     template.images = JSON.stringify(imagePayload);
     
-    // ダイアログサイズを調整 (1050x750)
     const htmlOutput = template.evaluate().setWidth(1050).setHeight(750);
     DocumentApp.getUi().showModalDialog(htmlOutput, "Markdown プレビュー");
 
   } catch (e) {
     Logger.log(e);
     DocumentApp.getUi().alert(`プレビュー中にエラーが発生しました:\n${e.message}`);
-  }
-}
-
-// --- Helper Functions (Public API for Caller) ---
-
-/**
- * 整形済みのタブリストを返します。UI表示のためにCallerから呼び出されます。
- * @param {GoogleAppsScript.Document.Document} doc ドキュメントオブジェクト
- * @returns {Array<object>} UI表示用に整形されたタブのリスト
- */
-function getFlattenedTabs(doc) {
-  const tabs = doc.getTabs ? doc.getTabs() : [];
-  return _flattenTabs(tabs);
-}
-
-// --- Data Conversion Logic (Internal) ---
-/**
- * Builds data objects for all specified tabs or the main body.
- * @private
- */
-function _buildAllDocumentData(doc, selectedTabIds) {
-  const allDataObjects = [];
-  const tabs = doc.getTabs ? doc.getTabs() : [];
-
-  if (selectedTabIds && selectedTabIds.length > 0) {
-    selectedTabIds.forEach((tabId) => {
-      const documentData = _buildDocumentData(doc, tabId);
-      if (!documentData.frontMatter.file_path) {
-        const tabTitle = _findTabById(tabs, tabId).getTitle();
-        throw new Error(
-          `タブ「${tabTitle}」のフロントマターに 'file_path' がありません。`
-        );
-      }
-      allDataObjects.push(documentData);
-    });
-  } else {
-    const documentData = _buildDocumentData(doc, null);
-    if (!documentData.frontMatter.file_path) {
-      throw new Error(
-        "フロントマターに 'file_path' が設定されていません。ドキュメント先頭のテーブルを確認してください。"
-      );
-    }
-    allDataObjects.push(documentData);
-  }
-  return allDataObjects;
-}
-
-/**
- * Parses a Google Doc body/tab into a serializable data object.
- * @private
- */
-function _buildDocumentData(doc, tabId) {
-  let body;
-  if (tabId) {
-    const tab = _findTabById(doc.getTabs(), tabId);
-    if (!tab) throw new Error(`指定されたタブ（ID: ${tabId}）が見つかりません。`);
-    body = tab.asDocumentTab().getBody();
-  } else {
-    body = doc.getBody();
-  }
-
-  const numChildren = body.getNumChildren();
-  const frontMatter = {};
-  const documentData = [];
-  let contentStartIndex = 0;
-
-  // 1. Find front matter table
-  for (let i = 0; i < numChildren; i++) {
-    const child = body.getChild(i);
-    if (
-      child.getType() === DocumentApp.ElementType.PARAGRAPH &&
-      child.asParagraph().getText().trim() === ""
-    ) {
-      continue;
-    }
-    if (child.getType() === DocumentApp.ElementType.TABLE) {
-      const table = child.asTable();
-      for (let r = 1; r < table.getNumRows(); r++) {
-        const row = table.getRow(r);
-        if (row.getNumCells() < 2) continue;
-        const key = row.getCell(0).getText().trim();
-        const value = row.getCell(1).getText().trim();
-        if (key) {
-          frontMatter[key] = value;
-        }
-      }
-      contentStartIndex = i + 1;
-    }
-    break;
-  }
-
-  // 2. Parse document content
-  for (let i = contentStartIndex; i < numChildren; i++) {
-    const child = body.getChild(i);
-    let elementData = null;
-
-    switch (child.getType()) {
-      case DocumentApp.ElementType.PARAGRAPH:
-        const paragraph = child.asParagraph();
-        const img = paragraph.findElement(DocumentApp.ElementType.INLINE_IMAGE);
-        if (img) {
-          const imgEl = img.getElement().asInlineImage();
-          const blob = imgEl.getBlob();
-          if (blob) {
-            elementData = {
-              type: "IMAGE",
-              bytes: blob.getBytes(),
-              contentType: blob.getContentType(),
-              alt: imgEl.getAltDescription(),
-            };
-          }
-        } else if (paragraph.getText().trim() !== "") {
-          elementData = {
-            type: "PARAGRAPH",
-            text: _processTextAttributes(paragraph.asText()),
-            heading: paragraph.getHeading().toString(),
-          };
-          const combinedText = elementData.text.map((s) => s.text).join("");
-          if (!combinedText || combinedText.trim() === "") {
-            elementData = null;
-          }
-        }
-        break;
-
-      case DocumentApp.ElementType.LIST_ITEM:
-        const listItem = child.asListItem();
-        if (listItem.getText().trim() !== "") {
-          const glyph = listItem.getGlyphType();
-          elementData = {
-            type: "LIST_ITEM",
-            text: _processTextAttributes(listItem.asText()),
-            nestingLevel: listItem.getNestingLevel(),
-            isNumbered:
-              glyph === DocumentApp.GlyphType.NUMBER ||
-              glyph === DocumentApp.GlyphType.LATIN_UPPER ||
-              glyph === DocumentApp.GlyphType.LATIN_LOWER,
-          };
-        }
-        break;
-    }
-
-    if (elementData) {
-      documentData.push(elementData);
-    }
-  }
-
-  return { frontMatter, documentData };
-}
-
-/**
- * Processes text attributes (bold, italic, link) for a text element.
- * @private
- */
-function _processTextAttributes(textElement) {
-  const text = textElement.getText();
-  if (text === null || text.trim() === "") return [{ text: text, attributes: {} }];
-
-  const attributeIndices = textElement.getTextAttributeIndices();
-  const segments = [];
-  let lastIndex = 0;
-
-  for (let i = 0; i < attributeIndices.length; i++) {
-    const startIndex = attributeIndices[i];
-    const segment = text.substring(lastIndex, startIndex);
-    const attributes = textElement.getAttributes(lastIndex);
-    const relevantAttributes = {
-      [DocumentApp.Attribute.BOLD]: attributes[DocumentApp.Attribute.BOLD],
-      [DocumentApp.Attribute.ITALIC]: attributes[DocumentApp.Attribute.ITALIC],
-      [DocumentApp.Attribute.LINK_URL]: attributes[DocumentApp.Attribute.LINK_URL],
-    };
-    if (segment) {
-      segments.push({ text: segment, attributes: relevantAttributes });
-    }
-    lastIndex = startIndex;
-  }
-
-  const lastSegment = text.substring(lastIndex);
-  if (lastSegment) {
-    const attributes = textElement.getAttributes(lastIndex);
-    const relevantAttributes = {
-      [DocumentApp.Attribute.BOLD]: attributes[DocumentApp.Attribute.BOLD],
-      [DocumentApp.Attribute.ITALIC]: attributes[DocumentApp.Attribute.ITALIC],
-      [DocumentApp.Attribute.LINK_URL]: attributes[DocumentApp.Attribute.LINK_URL],
-    };
-    segments.push({ text: lastSegment, attributes: relevantAttributes });
-  }
-
-  return segments;
-}
-/**
- * Recursively flattens the tab structure into a single array for UI display.
- * @private
- */
-function _flattenTabs(tabs, level = 0) {
-  if (!tabs || tabs.length === 0) return [];
-  let flatList = [];
-  const indent = "  ".repeat(level);
-  tabs.forEach((tab) => {
-    flatList.push({ id: tab.getId(), title: indent + tab.getTitle() });
-    const childTabs = tab.getChildTabs();
-    if (childTabs.length > 0) {
-      flatList = flatList.concat(_flattenTabs(childTabs, level + 1));
-    }
-  });
-  return flatList;
-}
-
-/**
- * Converts the data object from the caller into a complete Markdown file content.
- * @private
- */
-function _convertDataToMarkdown(
-  dataObject,
-  markdownBaseDir,
-  imageSubDir,
-  markdownFilePrefix
-) {
-  const { frontMatter, documentData } = dataObject;
-  const images = [];
-  let imageCounter = 0;
-
-  let frontMatterString = "";
-  if (frontMatter && Object.keys(frontMatter).length > 0) {
-    frontMatterString += "---\n";
-
-    // Handle date: Parse user input or set to current ISO 8601 time if empty.
-    if (frontMatter.date === undefined || frontMatter.date === "") {
-      frontMatter.date = new Date().toISOString();
-    } else {
-      const parsedDate = new Date(frontMatter.date);
-      // Check if the parsed date is valid.
-      if (!isNaN(parsedDate.getTime())) {
-        frontMatter.date = parsedDate.toISOString();
-      } // If parsing fails, the original string is kept, which might cause an error in the SSG, alerting the user.
-    }
-
-    for (const key in frontMatter) {
-      const value = frontMatter[key];
-      const arrayKeys = ["tags", "authors", "categories"];
-
-      if (arrayKeys.includes(key)) {
-        frontMatterString += `${key}:\n`;
-        if (value && value.includes(",")) {
-          value.split(",").forEach((item) => {
-            frontMatterString += `  - "${item.trim()}"\n`;
-          });
-        }
-      } else if (key === "draft" && (value === "true" || value === "false")) {
-        frontMatterString += `${key}: ${value}\n`; // Don't quote boolean values
-      } else {
-        frontMatterString += `${key}: "${value}"\n`;
-      }
-    }
-    frontMatterString += "---\n\n";
-  }
-
-  const markdownBody = documentData.reduce((acc, element, index) => {
-    let markdownChunk = "";
-    switch (element.type) {
-      case "PARAGRAPH":
-        switch (element.heading) {
-          case "HEADING1":
-            markdownChunk = `# ${_applyMarkdownToSegments(element.text)}`;
-            break;
-          case "HEADING2":
-            markdownChunk = `## ${_applyMarkdownToSegments(element.text)}`;
-            break;
-          case "HEADING3":
-            markdownChunk = `### ${_applyMarkdownToSegments(element.text)}`;
-            break;
-          default:
-            markdownChunk = _applyMarkdownToSegments(element.text);
-        }
-        break;
-      case "LIST_ITEM":
-        const indent = "  ".repeat(element.nestingLevel || 0);
-        const marker = element.isNumbered ? "1." : "-";
-        markdownChunk = `${indent}${marker} ${_applyMarkdownToSegments(element.text)}`;
-        break;
-      case "IMAGE":
-        imageCounter++;
-        const extension = element.contentType.split("/")[1].replace("jpeg", "jpg");
-        const imageName = `${markdownFilePrefix}_${imageCounter}.${extension}`;
-        const linkPath = `./${imageSubDir}/${imageName}`;
-        const uploadPath = (markdownBaseDir ? `${markdownBaseDir}/` : "") + `${imageSubDir}/${imageName}`;
-        images.push({ path: uploadPath, bytes: element.bytes });
-        // 修正: 正しいMarkdown画像記法 ![alt](url) に変更
-        // 以前は `!${...}` だけになっていたため画像として認識されていなかった
-        markdownChunk = `![${element.alt || imageName}](${linkPath})`;
-        break;
-    }
-
-    if (!markdownChunk) {
-      return acc; // If the current chunk is empty, do nothing.
-    }
-    if (!acc) {
-      return markdownChunk; // If accumulator is empty (first element), just return the chunk.
-    }
-
-    // Determine the separator. Use a single newline between consecutive list items.
-    const prevElement = documentData[index - 1];
-    const separator = (prevElement && prevElement.type === "LIST_ITEM" && element.type === "LIST_ITEM") ? "\n" : "\n\n";
-    return `${acc}${separator}${markdownChunk}`;
-  }, "");
-
-  return { markdown: frontMatterString + markdownBody, images: images };
-}
-
-/**
- * Applies markdown styling to a text segment based on its attributes.
- * @param {Array<Object>} textSegments An array of text segments with attributes.
- * @returns {string} The fully styled markdown text.
- * @private
- */
-function _applyMarkdownToSegments(textSegments) {
-  // Handle plain string for backward compatibility or if data is malformed.
-  if (!textSegments || !Array.isArray(textSegments)) return textSegments || "";
-
-  return textSegments.map(segment => {
-    let styledText = segment.text;
-    const attributes = segment.attributes || {};
-    if (attributes["BOLD"] && attributes["ITALIC"]) {
-      styledText = `***${styledText}***`;
-    } else if (attributes["BOLD"]) {
-      styledText = `**${styledText}**`;
-    } else if (attributes["ITALIC"]) {
-      styledText = `*${styledText}*`;
-    }
-    if (attributes["LINK_URL"]) {
-      styledText = `[${styledText}](${attributes["LINK_URL"]})`;
-    }
-    return styledText;
-  }).join("");
-}
-
-/**
- * Finds a tab by its ID within a nested tab structure.
- * @private
- */
-function _findTabById(tabs, tabId) {
-  for (const tab of tabs) {
-    if (tab.getId() === tabId) return tab;
-    const foundInChild = _findTabById(tab.getChildTabs(), tabId);
-    if (foundInChild) return foundInChild;
-  }
-  return null;
-}
-
-
-// --- Git Trees API Implementation (Internal) ---
-/**
- * Pushes multiple files to GitHub as a single atomic commit.
- * @private
- */
-function _pushFilesAsSingleCommit(files, commitMessage, settings) {
-  // Decrypt the token before use
-  const decryptedToken = _decrypt(settings.GITHUB_TOKEN);
-  
-  // Use decrypted token for all API calls
-  const { GITHUB_USER, GITHUB_REPO } = settings;
-  const branch = settings.BRANCH_NAME || "main";
-
-  const repoName = GITHUB_REPO.split("/")
-    .pop()
-    .replace(/\.git$/, "");
-  const apiBase = `https://api.github.com/repos/${GITHUB_USER}/${repoName}`;
-
-  const refData = __githubApiRequest(
-    `${apiBase}/git/refs/heads/${branch}`,
-    "GET",
-    null,
-    decryptedToken
-  );
-  const latestCommitSha = refData.object.sha;
-  const commitData = __githubApiRequest(
-    `${apiBase}/git/commits/${latestCommitSha}`,
-    "GET",
-    null,
-    decryptedToken
-  );
-  const baseTreeSha = commitData.tree.sha;
-
-  const treeElements = files.map((file) => {
-    const blobData = __githubApiRequest(
-      `${apiBase}/git/blobs`,
-      "POST",
-      {
-        content: file.isBinary
-          ? Utilities.base64Encode(file.content)
-          : Utilities.base64Encode(file.content, Utilities.Charset.UTF_8),
-        encoding: "base64",
-      },
-      decryptedToken
-    );
-
-    return { path: file.path, mode: "100644", type: "blob", sha: blobData.sha };
-  });
-
-  const newTreeData = __githubApiRequest(
-    `${apiBase}/git/trees`,
-    "POST",
-    {
-      base_tree: baseTreeSha,
-      tree: treeElements,
-    },
-    decryptedToken
-  );
-
-  const newCommitData = __githubApiRequest(
-    `${apiBase}/git/commits`,
-    "POST",
-    {
-      message: commitMessage,
-      tree: newTreeData.sha,
-      parents: [latestCommitSha],
-    },
-    decryptedToken
-  );
-
-  __githubApiRequest(
-    `${apiBase}/git/refs/heads/${branch}`,
-    "PATCH",
-    {
-      sha: newCommitData.sha,
-    },
-    decryptedToken
-  );
-}
-
-/**
- * A generic helper function to make requests to the GitHub API.
- * @private
- */
-function __githubApiRequest(url, method, payload, token) {
-  const options = {
-    method: method,
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: "application/vnd.github.v3+json",
-    },
-    contentType: "application/json",
-    muteHttpExceptions: true,
-  };
-  if (payload) {
-    options.payload = JSON.stringify(payload);
-  }
-
-  const response = UrlFetchApp.fetch(url, options);
-  const responseCode = response.getResponseCode();
-  const responseBody = response.getContentText();
-
-  if (responseCode >= 200 && responseCode < 300) {
-    return JSON.parse(responseBody);
-  } else {
-    throw new Error(
-      `GitHub API Error (${url}, Code: ${responseCode}): ${responseBody}`
-    );
   }
 }
