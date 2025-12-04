@@ -4,6 +4,7 @@
     <base target="_top">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.1/dist/purify.min.js"></script>
     <style>
       body { 
         margin: 0; 
@@ -115,7 +116,10 @@
       });
       
       // 3. HTML変換
-      document.getElementById('preview-view').innerHTML = marked.parse(previewMarkdown);
+      // 3. HTML変換
+      const dirtyHtml = marked.parse(previewMarkdown);
+      const cleanHtml = DOMPurify.sanitize(dirtyHtml);
+      document.getElementById('preview-view').innerHTML = cleanHtml;
 
       function switchTab(mode, btn) {
         // Reset tabs

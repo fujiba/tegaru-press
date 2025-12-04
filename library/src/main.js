@@ -131,15 +131,6 @@ function executeInsertFrontMatter(formObject) {
     }
 
     // --- データ生成ロジック ---
-    const settings = getSettings();
-    const contentRoot = settings.CONTENT_ROOT_PATH || "";
-    const dateObj = new Date(date);
-    const formattedDate = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyyMMdd");
-    }
-
-    // --- データ生成ロジック ---
-    const settings = getSettings();
-    const contentRoot = settings.CONTENT_ROOT_PATH || "";
     const dateObj = new Date(date);
     const formattedDate = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyyMMdd");
     const slug = title.toLowerCase()
