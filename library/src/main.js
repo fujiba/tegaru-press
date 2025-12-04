@@ -135,7 +135,19 @@ function executeInsertFrontMatter(formObject) {
     const contentRoot = settings.CONTENT_ROOT_PATH || "";
     const dateObj = new Date(date);
     const formattedDate = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyyMMdd");
-    const filePath = [`${formattedDate}-${title}`, "index.md"].filter(Boolean).join("/");
+    }
+
+    // --- データ生成ロジック ---
+    const settings = getSettings();
+    const contentRoot = settings.CONTENT_ROOT_PATH || "";
+    const dateObj = new Date(date);
+    const formattedDate = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyyMMdd");
+    const slug = title.toLowerCase()
+      .replace(/\s+/g, '-') // スペースをハイフンに置換
+      .replace(/[\\/?%*:|"<>.]/g, '-') // ファイルパスとして不適切な文字をハイフンに置換
+      .replace(/--+/g, '-') // 連続するハイフンを1つにまとめる
+      .replace(/^-+|-+$/g, ''); // 先頭と末尾のハイフンを削除
+    const filePath = [`${formattedDate}-${slug}`, "index.md"].filter(Boolean).join("/");
     const formattedDateTime = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm:ss");
     // --- データ生成ロジックここまで ---
 
