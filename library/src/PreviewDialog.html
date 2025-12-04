@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.1/dist/purify.min.js"></script>
+    <style>
+      body { 
+        margin: 0; 
+        padding: 0; 
+        display: flex; 
+        flex-direction: column; 
+        height: 100vh; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      }
+      .tabs { 
+        display: flex; 
+        border-bottom: 1px solid #d0d7de; 
+        background: #f6f8fa; 
+        padding: 0 10px;
+      }
+      .tab { 
+        padding: 10px 15px; 
+        cursor: pointer; 
+        border: 1px solid transparent; 
+        border-bottom: none;
+        background: none; 
+        outline: none; 
+        font-size: 14px;
+        color: #57606a;
+        margin-top: 5px;
+        border-radius: 6px 6px 0 0;
+      }
+      .tab:hover {
+        color: #24292f;
+      }
+      .tab.active { 
+        background: #fff; 
+        border-color: #d0d7de; 
+        border-bottom-color: #fff; 
+        color: #24292f; 
+        font-weight: 600;
+        margin-bottom: -1px; /* Overlap border */
+      }
+      .tab-content { 
+        flex: 1; 
+        overflow: auto; 
+        display: none; 
+        padding: 20px;
+      }
+      .tab-content.active { 
+        display: block; 
+      }
+      #raw-content {
+        width: 100%;
+        height: 100%;
+        border: none;
+        resize: none;
+        font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+        font-size: 12px;
+        color: #24292f;
+        white-space: pre-wrap;
+        background-color: #f6f8fa;
+        padding: 10px;
+        box-sizing: border-box;
+        border-radius: 6px;
+      }
+      .markdown-body {
+        box-sizing: border-box;
+        width: 100%; /* 幅いっぱいに */
+        margin: 0 auto;
+        background-color: #fff;
+        color: #24292f; 
+      }
+      /* 画像がデカすぎるときのために最大幅制限 */
+      .markdown-body img {
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('preview', this)">Preview</button>
+      <button class="tab" onclick="switchTab('code', this)">Markdown</button>
+    </div>
+    
+    <div id="preview-view" class="tab-content active markdown-body"></div>
+    <div id="code-view" class="tab-content">
+      <textarea id="raw-content" readonly><?= content ?></textarea>
+    </div>
+    
+    <!-- 画像データを不可視要素として保持 -->
+    <script id="image-data" type="application/json">
+      <?!= images ?>
+    </script>
+
+    <script>
+      // Initial Render
+      const rawContent = document.getElementById('raw-content').value;
+      const images = JSON.parse(document.getElementById('image-data').textContent);
+      
+      // --- プレビュー生成ロジック ---
+      let previewMarkdown = rawContent;
+      
+      // 1. フロントマターを除去 
+      // 行頭の --- で始まり、次の --- で終わるブロックを、改行コードや空白に強くマッチさせる
+      // trim()して先頭の空白を除去してから正規表現を適用
+      previewMarkdown = previewMarkdown.trim().replace(/^---\s*[\r\n]+[\s\S]*?[\r\n]+---\s*[\r\n]*/, '');
+      
+      // 2. 画像パスをBase64に置換
+      // Markdownのパスは "./images/..." になっているので完全一致で置換
+      images.forEach(img => {
+        // split/joinで全置換
+        previewMarkdown = previewMarkdown.split(img.path).join(img.data);
+      });
+      
+      // 3. HTML変換
+      // 3. HTML変換
+      const dirtyHtml = marked.parse(previewMarkdown);
+      const cleanHtml = DOMPurify.sanitize(dirtyHtml);
+      document.getElementById('preview-view').innerHTML = cleanHtml;
+
+      function switchTab(mode, btn) {
+        // Reset tabs
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        
+        // Reset views
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        if (mode === 'preview') {
+          document.getElementById('preview-view').classList.add('active');
+        } else {
+          document.getElementById('code-view').classList.add('active');
+        }
+      }
+    </script>
+  </body>
+</html>
