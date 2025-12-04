@@ -289,6 +289,7 @@ function executePushFromDialog(selectedTabIds) {
   push(doc, selectedTabIds);
   DocumentApp.getUi().alert("コンテンツのPushが完了しました。");
 }
+
 /**
  * TabSelectionDialogから呼び出されるプレビュー実行関数。
  * (Public API for google.script.run)
@@ -305,10 +306,126 @@ function executePreviewFromDialog(selectedTabId) {
       return;
     }
 
-    // テンプレートを使用してコンテンツを安全にエスケープします
-    const template = HtmlService.createTemplate('<pre style="white-space: pre-wrap; word-wrap: break-word;"><?= content ?></pre>');
+    // HTMLテンプレートを構築
+    // marked.jsとgithub-markdown-cssを使ってリッチなプレビューを表示する
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <base target="_top">
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+          <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+          <style>
+            body { 
+              margin: 0; 
+              padding: 0; 
+              display: flex; 
+              flex-direction: column; 
+              height: 100vh; 
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            }
+            .tabs { 
+              display: flex; 
+              border-bottom: 1px solid #d0d7de; 
+              background: #f6f8fa; 
+              padding: 0 10px;
+            }
+            .tab { 
+              padding: 10px 15px; 
+              cursor: pointer; 
+              border: 1px solid transparent; 
+              border-bottom: none;
+              background: none; 
+              outline: none; 
+              font-size: 14px;
+              color: #57606a;
+              margin-top: 5px;
+              border-radius: 6px 6px 0 0;
+            }
+            .tab:hover {
+              color: #24292f;
+            }
+            .tab.active { 
+              background: #fff; 
+              border-color: #d0d7de; 
+              border-bottom-color: #fff; 
+              color: #24292f; 
+              font-weight: 600;
+              margin-bottom: -1px; /* Overlap border */
+            }
+            .tab-content { 
+              flex: 1; 
+              overflow: auto; 
+              display: none; 
+              padding: 20px;
+            }
+            .tab-content.active { 
+              display: block; 
+            }
+            #raw-content {
+              width: 100%;
+              height: 100%;
+              border: none;
+              resize: none;
+              font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+              font-size: 12px;
+              color: #24292f;
+              white-space: pre-wrap;
+              background-color: #f6f8fa;
+              padding: 10px;
+              box-sizing: border-box;
+              border-radius: 6px;
+            }
+            .markdown-body {
+              box-sizing: border-box;
+              min-width: 200px;
+              max-width: 980px;
+              margin: 0 auto;
+              background-color: #fff;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="tabs">
+            <button class="tab active" onclick="switchTab('preview', this)">Preview</button>
+            <button class="tab" onclick="switchTab('code', this)">Markdown</button>
+          </div>
+          
+          <div id="preview-view" class="tab-content active markdown-body"></div>
+          <div id="code-view" class="tab-content">
+            <textarea id="raw-content" readonly><?= content ?></textarea>
+          </div>
+      
+          <script>
+            // Initial Render
+            const rawContent = document.getElementById('raw-content').value;
+            // Parse Markdown to HTML using marked.js
+            document.getElementById('preview-view').innerHTML = marked.parse(rawContent);
+      
+            function switchTab(mode, btn) {
+              // Reset tabs
+              document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+              btn.classList.add('active');
+              
+              // Reset views
+              document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+              
+              if (mode === 'preview') {
+                document.getElementById('preview-view').classList.add('active');
+              } else {
+                document.getElementById('code-view').classList.add('active');
+              }
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    const template = HtmlService.createTemplate(htmlContent);
     template.content = markdownContent;
-    const htmlOutput = template.evaluate().setWidth(600).setHeight(450);
+    
+    // ダイアログサイズを少し大きくして見やすくしました
+    const htmlOutput = template.evaluate().setWidth(800).setHeight(600);
     DocumentApp.getUi().showModalDialog(htmlOutput, "Markdown プレビュー");
 
   } catch (e) {
