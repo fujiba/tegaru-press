@@ -65,7 +65,7 @@ function _convertDataToMarkdown(
     switch (element.type) {
       case "PARAGRAPH":
         switch (element.heading) {
-          case "TITLE": // タイトルも見出し1として扱う
+          case "TITLE":
           case "HEADING1":
             markdownChunk = `# ${_applyMarkdownToSegments(element.text)}`;
             break;
@@ -92,6 +92,37 @@ function _convertDataToMarkdown(
         const uploadPath = (markdownBaseDir ? `${markdownBaseDir}/` : "") + `${imageSubDir}/${imageName}`;
         images.push({ path: uploadPath, bytes: element.bytes });
         markdownChunk = `![${element.alt || imageName}](${linkPath})`;
+        break;
+      case "TABLE":
+        if (element.rows && element.rows.length > 0) {
+          // テーブルの各行を処理
+          const tableMarkdown = element.rows.map((row, rowIndex) => {
+             // セルごとのフォーマット関数
+             const formatCell = (segments) => {
+                 // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
+                 let md = _applyMarkdownToSegments(segments);
+                 // Markdownテーブル内で壊れる文字をエスケープ/置換
+                 // パイプ | はエスケープ
+                 md = md.replace(/\|/g, '\\|');
+                 // 改行は <br> タグに置換 (Markdownのテーブルセル内では改行コードが使えないため)
+                 // \r, \n, \v (垂直タブ) をすべてキャッチして変換
+                 md = md.replace(/[\r\n\v]+/g, '<br>');
+                 return md;
+             };
+             
+             // 行の組み立て: | cell1 | cell2 | ... |
+             const formattedRow = `| ${row.map(formatCell).join(' | ')} |`;
+             
+             // 1行目の直後にヘッダー区切り (---|---|...) を挿入
+             if (rowIndex === 0) {
+               // 全カラムに対して '---' を生成
+               const separator = `| ${row.map(() => '---').join(' | ')} |`;
+               return `${formattedRow}\n${separator}`;
+             }
+             return formattedRow;
+          }).join('\n');
+          markdownChunk = tableMarkdown;
+        }
         break;
     }
 
