@@ -1,9 +1,11 @@
 /**
  * @fileoverview Google Docs to GitHub Markdown Publisher - Library
- * @version 4.1.0
+ * @version 4.2.3
  * Major architectural change: The library now accepts a Google Docs object
  * directly and handles all parsing and processing internally.
  * Includes security enhancements for GitHub Token encryption.
+ * Fixes preview source readability by separating raw markdown and image data.
+ * Adjusts preview dialog size for better compatibility.
  */
 
 // --- Security Helpers (Internal) ---
@@ -152,6 +154,8 @@ function _pushDataObjects(dataObjects, settings) {
 
 /**
  * Returns the generated Markdown for preview purposes. (Public API)
+ * 以前のようにMarkdownテキストのみを返します（Base64画像は含みません）。
+ * プレビュー用のデータ取得には内部で getPreviewData を使用してください。
  * @param {GoogleAppsScript.Document.Document} doc The Google Document object to process.
  * @param {string|null} selectedTabId The ID of the tab to preview.
  * @return {string} The generated Markdown content.
@@ -165,6 +169,16 @@ function getMarkdown(doc, selectedTabId) {
     "preview"
   );
   return markdown;
+}
+
+/**
+ * Returns the generated Markdown and images for preview purposes.
+ * Internal helper for executePreviewFromDialog.
+ * @return {object} { markdown: string, images: Array }
+ */
+function _getPreviewData(doc, selectedTabId) {
+  const dataObject = _buildDocumentData(doc, selectedTabId);
+  return _convertDataToMarkdown(dataObject, "", "images", "preview");
 }
 
 // --- Settings Functions (Public API for Caller) ---
@@ -299,15 +313,30 @@ function executePreviewFromDialog(selectedTabId) {
   try {
     const doc = DocumentApp.getActiveDocument();
     const tabId = Array.isArray(selectedTabId) ? selectedTabId[0] : selectedTabId;
-    const markdownContent = getMarkdown(doc, tabId);
+    
+    // Markdownと画像データを分けて取得
+    const { markdown, images } = _getPreviewData(doc, tabId);
 
-    if (!markdownContent || markdownContent.trim() === "---") {
+    if (!markdown || markdown.trim() === "---") {
       DocumentApp.getUi().alert("ドキュメントが空か、フロントマターしかありません。");
       return;
     }
 
+    // プレビュー用に画像をBase64エンコードしてJSONで渡す準備
+    const imagePayload = images.map(image => {
+      let mimeType = "image/jpeg";
+      if (image.path.toLowerCase().endsWith(".png")) {
+        mimeType = "image/png";
+      } else if (image.path.toLowerCase().endsWith(".gif")) {
+        mimeType = "image/gif";
+      }
+      return {
+        path: "./" + image.path, // Markdown内の相対パスと合わせる
+        data: `data:${mimeType};base64,${Utilities.base64Encode(image.bytes)}`
+      };
+    });
+
     // HTMLテンプレートを構築
-    // marked.jsとgithub-markdown-cssを使ってリッチなプレビューを表示する
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -378,10 +407,14 @@ function executePreviewFromDialog(selectedTabId) {
             }
             .markdown-body {
               box-sizing: border-box;
-              min-width: 200px;
-              max-width: 980px;
+              width: 100%; /* 幅いっぱいに */
               margin: 0 auto;
               background-color: #fff;
+              color: #24292f; 
+            }
+            /* 画像がデカすぎるときのために最大幅制限 */
+            .markdown-body img {
+              max-width: 100%;
             }
           </style>
         </head>
@@ -395,12 +428,32 @@ function executePreviewFromDialog(selectedTabId) {
           <div id="code-view" class="tab-content">
             <textarea id="raw-content" readonly><?= content ?></textarea>
           </div>
+          
+          <!-- 画像データを不可視要素として保持 -->
+          <script id="image-data" type="application/json">
+            <?!= images ?>
+          </script>
       
           <script>
             // Initial Render
             const rawContent = document.getElementById('raw-content').value;
-            // Parse Markdown to HTML using marked.js
-            document.getElementById('preview-view').innerHTML = marked.parse(rawContent);
+            const images = JSON.parse(document.getElementById('image-data').textContent);
+            
+            // --- プレビュー生成ロジック ---
+            let previewMarkdown = rawContent;
+            
+            // 1. フロントマターを除去
+            previewMarkdown = previewMarkdown.replace(/^---\\n[\\s\\S]*?\\n---\\n/, '');
+            
+            // 2. 画像パスをBase64に置換
+            // Markdownのパスは "./images/..." になっているので完全一致で置換
+            images.forEach(img => {
+              // split/joinで全置換
+              previewMarkdown = previewMarkdown.split(img.path).join(img.data);
+            });
+            
+            // 3. HTML変換
+            document.getElementById('preview-view').innerHTML = marked.parse(previewMarkdown);
       
             function switchTab(mode, btn) {
               // Reset tabs
@@ -422,10 +475,11 @@ function executePreviewFromDialog(selectedTabId) {
     `;
 
     const template = HtmlService.createTemplate(htmlContent);
-    template.content = markdownContent;
+    template.content = markdown;
+    template.images = JSON.stringify(imagePayload);
     
-    // ダイアログサイズを少し大きくして見やすくしました
-    const htmlOutput = template.evaluate().setWidth(800).setHeight(600);
+    // ダイアログサイズを調整 (1050x750)
+    const htmlOutput = template.evaluate().setWidth(1050).setHeight(750);
     DocumentApp.getUi().showModalDialog(htmlOutput, "Markdown プレビュー");
 
   } catch (e) {
@@ -717,7 +771,9 @@ function _convertDataToMarkdown(
         const linkPath = `./${imageSubDir}/${imageName}`;
         const uploadPath = (markdownBaseDir ? `${markdownBaseDir}/` : "") + `${imageSubDir}/${imageName}`;
         images.push({ path: uploadPath, bytes: element.bytes });
-        markdownChunk = `!${element.alt || imageName}`;
+        // 修正: 正しいMarkdown画像記法 ![alt](url) に変更
+        // 以前は `!${...}` だけになっていたため画像として認識されていなかった
+        markdownChunk = `![${element.alt || imageName}](${linkPath})`;
         break;
     }
 
