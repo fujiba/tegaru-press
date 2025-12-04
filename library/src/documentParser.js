@@ -77,32 +77,49 @@ function _buildAllDocumentData(doc, selectedTabIds) {
 
 /**
  * Parses a Google Doc body/tab into a serializable data object.
+ * Refactored to orchestrate smaller helper functions.
  * @private
  */
 function _buildDocumentData(doc, tabId) {
-  let body;
+  const body = _getBodyFromDocOrTab(doc, tabId);
+  const { frontMatter, contentStartIndex } = _extractFrontMatter(body);
+  const documentData = _parseBodyContent(body, contentStartIndex);
+
+  return { frontMatter, documentData };
+}
+
+/**
+ * Retrieves the Body object from either a specific tab or the main document.
+ * @private
+ */
+function _getBodyFromDocOrTab(doc, tabId) {
   if (tabId) {
     const tab = _findTabById(doc.getTabs(), tabId);
     if (!tab) throw new Error(`指定されたタブ（ID: ${tabId}）が見つかりません。`);
-    body = tab.asDocumentTab().getBody();
-  } else {
-    body = doc.getBody();
+    return tab.asDocumentTab().getBody();
   }
+  return doc.getBody();
+}
 
+/**
+ * Extracts front matter from the beginning of the document body.
+ * @private
+ */
+function _extractFrontMatter(body) {
   const numChildren = body.getNumChildren();
   const frontMatter = {};
-  const documentData = [];
   let contentStartIndex = 0;
 
-  // 1. Find front matter table
   for (let i = 0; i < numChildren; i++) {
     const child = body.getChild(i);
+    // Skip empty paragraphs at the start
     if (
       child.getType() === DocumentApp.ElementType.PARAGRAPH &&
       child.asParagraph().getText().trim() === ""
     ) {
       continue;
     }
+    // Check if the first non-empty element is a table (Front Matter)
     if (child.getType() === DocumentApp.ElementType.TABLE) {
       const table = child.asTable();
       for (let r = 1; r < table.getNumRows(); r++) {
@@ -116,65 +133,116 @@ function _buildDocumentData(doc, tabId) {
       }
       contentStartIndex = i + 1;
     }
+    // Stop after checking the first significant element
     break;
   }
+  return { frontMatter, contentStartIndex };
+}
 
-  // 2. Parse document content
-  for (let i = contentStartIndex; i < numChildren; i++) {
+/**
+ * Iterates through the body content starting from the given index and parses elements.
+ * @private
+ */
+function _parseBodyContent(body, startIndex) {
+  const numChildren = body.getNumChildren();
+  const documentData = [];
+
+  for (let i = startIndex; i < numChildren; i++) {
     const child = body.getChild(i);
-    let elementData = null;
-
-    switch (child.getType()) {
-      case DocumentApp.ElementType.PARAGRAPH:
-        const paragraph = child.asParagraph();
-        const img = paragraph.findElement(DocumentApp.ElementType.INLINE_IMAGE);
-        if (img) {
-          const imgEl = img.getElement().asInlineImage();
-          const blob = imgEl.getBlob();
-          if (blob) {
-            elementData = {
-              type: "IMAGE",
-              bytes: blob.getBytes(),
-              contentType: blob.getContentType(),
-              alt: imgEl.getAltDescription(),
-            };
-          }
-        } else if (paragraph.getText().trim() !== "") {
-          elementData = {
-            type: "PARAGRAPH",
-            text: _processTextAttributes(paragraph.asText()),
-            heading: paragraph.getHeading().toString(),
-          };
-          const combinedText = elementData.text.map((s) => s.text).join("");
-          if (!combinedText || combinedText.trim() === "") {
-            elementData = null;
-          }
-        }
-        break;
-
-      case DocumentApp.ElementType.LIST_ITEM:
-        const listItem = child.asListItem();
-        if (listItem.getText().trim() !== "") {
-          const glyph = listItem.getGlyphType();
-          elementData = {
-            type: "LIST_ITEM",
-            text: _processTextAttributes(listItem.asText()),
-            nestingLevel: listItem.getNestingLevel(),
-            isNumbered:
-              glyph === DocumentApp.GlyphType.NUMBER ||
-              glyph === DocumentApp.GlyphType.LATIN_UPPER ||
-              glyph === DocumentApp.GlyphType.LATIN_LOWER,
-          };
-        }
-        break;
-    }
-
+    const elementData = _parseElement(child);
     if (elementData) {
       documentData.push(elementData);
     }
   }
+  return documentData;
+}
 
-  return { frontMatter, documentData };
+/**
+ * Parses a single document element (Paragraph, List Item, or Table) into a data object.
+ * @private
+ */
+function _parseElement(child) {
+  let elementData = null;
+  const type = child.getType();
+
+  switch (type) {
+    case DocumentApp.ElementType.PARAGRAPH:
+      const paragraph = child.asParagraph();
+      const img = paragraph.findElement(DocumentApp.ElementType.INLINE_IMAGE);
+      if (img) {
+        const imgEl = img.getElement().asInlineImage();
+        const blob = imgEl.getBlob();
+        if (blob) {
+          elementData = {
+            type: "IMAGE",
+            bytes: blob.getBytes(),
+            contentType: blob.getContentType(),
+            alt: imgEl.getAltDescription(),
+          };
+        }
+      } else if (paragraph.getText().trim() !== "") {
+        elementData = {
+          type: "PARAGRAPH",
+          text: _processTextAttributes(paragraph.asText()),
+          heading: paragraph.getHeading().toString(),
+        };
+        const combinedText = elementData.text.map((s) => s.text).join("");
+        if (!combinedText || combinedText.trim() === "") {
+          elementData = null;
+        }
+      }
+      break;
+
+    case DocumentApp.ElementType.LIST_ITEM:
+      const listItem = child.asListItem();
+      if (listItem.getText().trim() !== "") {
+        const glyph = listItem.getGlyphType();
+        elementData = {
+          type: "LIST_ITEM",
+          text: _processTextAttributes(listItem.asText()),
+          nestingLevel: listItem.getNestingLevel(),
+          isNumbered:
+            glyph === DocumentApp.GlyphType.NUMBER ||
+            glyph === DocumentApp.GlyphType.LATIN_UPPER ||
+            glyph === DocumentApp.GlyphType.LATIN_LOWER,
+        };
+      }
+      break;
+
+    case DocumentApp.ElementType.TABLE:
+      const table = child.asTable();
+      const tableRows = [];
+      for (let r = 0; r < table.getNumRows(); r++) {
+        const row = table.getRow(r);
+        const rowData = [];
+        for (let c = 0; c < row.getNumCells(); c++) {
+          const cell = row.getCell(c);
+          let cellSegments = [];
+          // Process all children in the cell (mainly paragraphs)
+          for (let k = 0; k < cell.getNumChildren(); k++) {
+            const cellChild = cell.getChild(k);
+            if (cellChild.getType() === DocumentApp.ElementType.PARAGRAPH) {
+              const segments = _processTextAttributes(cellChild.asParagraph().asText());
+              if (k > 0) {
+                cellSegments.push({ text: "\n", attributes: {} });
+              }
+              cellSegments.push(...segments);
+            }
+          }
+          rowData.push(cellSegments);
+        }
+        tableRows.push(rowData);
+      }
+      if (tableRows.length > 0) {
+        elementData = {
+          type: "TABLE",
+          rows: tableRows
+        };
+      }
+      break;
+  }
+
+  return elementData;
 }
 
 /**
