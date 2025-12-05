@@ -22,6 +22,11 @@ function _flattenTabs(tabs, level = 0) {
   let flatList = [];
   const indent = "  ".repeat(level);
   tabs.forEach((tab) => {
+    const title = tab.getTitle();
+    if (title.trim().startsWith("[NOSYNC")) {
+      // 更新対象外タブはスキップ
+      return;
+    }
     flatList.push({ id: tab.getId(), title: indent + tab.getTitle() });
     const childTabs = tab.getChildTabs();
     if (childTabs.length > 0) {
