@@ -56,11 +56,14 @@
         <div class="tab-list">
           <? if (action === 'push') { ?>
             <? for (var i = 0; i < tabs.length; i++) { ?>
-              <label><input type="checkbox" name="selected_tabs" value="<?= tabs[i].id ?>"> <?= tabs[i].title ?></label>
+              <!-- activeTabIdと一致すればチェック -->
+              <label><input type="checkbox" name="selected_tabs" value="<?= tabs[i].id ?>" <?= tabs[i].id === activeTabId ? 'checked' : '' ?>> <?= tabs[i].title ?></label>
             <? } ?>
           <? } else { ?>
+            <!-- プレビューの場合はラジオボタン -->
             <? for (var i = 0; i < tabs.length; i++) { ?>
-              <label><input type="radio" name="selected_tabs" value="<?= tabs[i].id ?>"> <?= tabs[i].title ?></label>
+              <!-- activeTabIdと一致、またはactiveTabIdがなくて最初の要素ならチェック -->
+              <label><input type="radio" name="selected_tabs" value="<?= tabs[i].id ?>" <?= (tabs[i].id === activeTabId || (!activeTabId && i === 0)) ? 'checked' : '' ?>> <?= tabs[i].title ?></label>
             <? } ?>
           <? } ?>
         </div>
