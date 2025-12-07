@@ -16,19 +16,14 @@ function _getPreviewData(doc, selectedTabId) {
 function _applyMarkdownWithHardBreaks(textSegments) {
   const markdownText = _applyMarkdownToSegments(textSegments);
   // パラグラフやリストアイテム内でも改行コードがあれば強制改行(  \n)に変換
-  return markdownText.replace(/[\r\n\v]+/g, '  \n');
+  return markdownText.replace(/[\r\n\v]+/g, "  \n");
 }
 
 /**
  * Converts the data object from the caller into a complete Markdown file content.
  * @private
  */
-function _convertDataToMarkdown(
-  dataObject,
-  markdownBaseDir,
-  imageSubDir,
-  markdownFilePrefix
-) {
+function _convertDataToMarkdown(dataObject, markdownBaseDir, imageSubDir, markdownFilePrefix) {
   const { frontMatter, documentData } = dataObject;
   const images = [];
   let imageCounter = 0;
@@ -41,7 +36,7 @@ function _convertDataToMarkdown(
       frontMatter.date = new Date().toISOString();
     } else {
       const parsedDate = new Date(frontMatter.date);
-      if (!isNaN(parsedDate.getTime())) {
+      if (!Number.isNaN(parsedDate.getTime())) {
         frontMatter.date = parsedDate.toISOString();
       }
     }
@@ -52,7 +47,7 @@ function _convertDataToMarkdown(
 
       if (arrayKeys.includes(key)) {
         frontMatterString += `${key}:\n`;
-        if (value && value.includes(",")) {
+        if (value?.includes(",")) {
           value.split(",").forEach((item) => {
             frontMatterString += `  - "${item.trim()}"\n`;
           });
@@ -86,53 +81,59 @@ function _convertDataToMarkdown(
             markdownChunk = _applyMarkdownWithHardBreaks(element.text);
         }
         break;
-      case "LIST_ITEM":
+      case "LIST_ITEM": {
         const indent = "  ".repeat(element.nestingLevel || 0);
         const marker = element.isNumbered ? "1." : "-";
-        
+
         // リストアイテム内でのShift+Enter(垂直タブ等)を Markdownの強制改行(スペース2つ+改行)に変換
         markdownChunk = `${indent}${marker} ${_applyMarkdownWithHardBreaks(element.text)}`;
         break;
-      case "IMAGE":
+      }
+      case "IMAGE": {
         imageCounter++;
         const extension = element.contentType.split("/")[1].replace("jpeg", "jpg");
         const imageName = `${markdownFilePrefix}_${imageCounter}.${extension}`;
         const linkPath = `./${imageSubDir}/${imageName}`;
-        const uploadPath = (markdownBaseDir ? `${markdownBaseDir}/` : "") + `${imageSubDir}/${imageName}`;
+        const uploadPath = `${markdownBaseDir ? `${markdownBaseDir}/` : ""}${imageSubDir}/${imageName}`;
+
         images.push({ path: uploadPath, bytes: element.bytes });
         markdownChunk = `![${element.alt || imageName}](${linkPath})`;
         break;
-      case "TABLE":
-         const formatCell = (segments) => {
-             // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
-             let md = _applyMarkdownToSegments(segments);
-             // Markdownテーブル内で壊れる文字をエスケープ/置換
-             // パイプ | はエスケープ
-             md = md.replace(/\|/g, '\\|');
-             // 改行は <br> タグに置換 (Markdownのテーブルセル内では改行コードが使えないため)
-             // \r, \n, \v (垂直タブ) をすべてキャッチして変換
-             md = md.replace(/[\r\n\v]+/g, '<br>');
-             return md;
-         };
-             
+      }
+      case "TABLE": {
+        const formatCell = (segments) => {
+          // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
+          let md = _applyMarkdownToSegments(segments);
+          // Markdownテーブル内で壊れる文字をエスケープ/置換
+          // パイプ | はエスケープ
+          md = md.replace(/\|/g, "\\|");
+          // 改行は <br> タグに置換 (Markdownのテーブルセル内では改行コードが使えないため)
+          // \r, \n, \v (垂直タブ) をすべてキャッチして変換
+          md = md.replace(/[\r\n\v]+/g, "<br>");
+          return md;
+        };
+
         if (element.rows && element.rows.length > 0) {
           // テーブルの各行を処理
-          const tableMarkdown = element.rows.map((row, rowIndex) => {
-             // セルごとのフォーマット関数
-             // 行の組み立て: | cell1 | cell2 | ... |
-             const formattedRow = `| ${row.map(formatCell).join(' | ')} |`;
-             
-             // 1行目の直後にヘッダー区切り (---|---|...) を挿入
-             if (rowIndex === 0) {
-               // 全カラムに対して '---' を生成
-               const separator = `| ${row.map(() => '---').join(' | ')} |`;
-               return `${formattedRow}\n${separator}`;
-             }
-             return formattedRow;
-          }).join('\n');
+          const tableMarkdown = element.rows
+            .map((row, rowIndex) => {
+              // セルごとのフォーマット関数
+              // 行の組み立て: | cell1 | cell2 | ... |
+              const formattedRow = `| ${row.map(formatCell).join(" | ")} |`;
+
+              // 1行目の直後にヘッダー区切り (---|---|...) を挿入
+              if (rowIndex === 0) {
+                // 全カラムに対して '---' を生成
+                const separator = `| ${row.map(() => "---").join(" | ")} |`;
+                return `${formattedRow}\n${separator}`;
+              }
+              return formattedRow;
+            })
+            .join("\n");
           markdownChunk = tableMarkdown;
         }
         break;
+      }
     }
 
     if (!markdownChunk) {
@@ -143,7 +144,10 @@ function _convertDataToMarkdown(
     }
 
     const prevElement = documentData[index - 1];
-    const separator = (prevElement && prevElement.type === "LIST_ITEM" && element.type === "LIST_ITEM") ? "\n" : "\n\n";
+    const separator =
+      prevElement && prevElement.type === "LIST_ITEM" && element.type === "LIST_ITEM"
+        ? "\n"
+        : "\n\n";
     return `${acc}${separator}${markdownChunk}`;
   }, "");
 
@@ -159,19 +163,21 @@ function _convertDataToMarkdown(
 function _applyMarkdownToSegments(textSegments) {
   if (!textSegments || !Array.isArray(textSegments)) return textSegments || "";
 
-  return textSegments.map(segment => {
-    let styledText = segment.text;
-    const attributes = segment.attributes || {};
-    if (attributes["BOLD"] && attributes["ITALIC"]) {
-      styledText = `***${styledText}***`;
-    } else if (attributes["BOLD"]) {
-      styledText = `**${styledText}**`;
-    } else if (attributes["ITALIC"]) {
-      styledText = `*${styledText}*`;
-    }
-    if (attributes["LINK_URL"]) {
-      styledText = `[${styledText}](${attributes["LINK_URL"]})`;
-    }
-    return styledText;
-  }).join("");
+  return textSegments
+    .map((segment) => {
+      let styledText = segment.text;
+      const attributes = segment.attributes || {};
+      if (attributes.BOLD && attributes.ITALIC) {
+        styledText = `***${styledText}***`;
+      } else if (attributes.BOLD) {
+        styledText = `**${styledText}**`;
+      } else if (attributes.ITALIC) {
+        styledText = `*${styledText}*`;
+      }
+      if (attributes.LINK_URL) {
+        styledText = `[${styledText}](${attributes.LINK_URL})`;
+      }
+      return styledText;
+    })
+    .join("");
 }

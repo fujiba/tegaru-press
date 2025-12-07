@@ -1,0 +1,17 @@
+{
+  "name": "tegaru-press",
+  "version": "0.1.0",
+  "description": "Google Docs to GitHub Markdown Publisher",
+  "scripts": {
+    "format": "biome format --write .",
+    "lint": "biome lint --write .",
+    "check": "biome check --write ."
+  },
+  "license": "MIT",
+  "author": "T.Fujiba",
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@google/clasp": "^2.4.2",
+    "@types/google-apps-script": "^1.0.83"
+  }
+}
