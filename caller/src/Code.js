@@ -50,15 +50,37 @@ function executePreviewFromDialog(selectedTabId) {
 }
 
 /**
+ * Helper: アクティブなタブIDを取得する
+ * @param {GoogleAppsScript.Document.Document} doc
+ * @returns {string|null}
+ */
+function getActiveTabId(doc) {
+  try {
+    if (doc.getActiveTab) {
+      const activeTab = doc.getActiveTab();
+      if (activeTab) {
+        return activeTab.getId();
+      }
+    }
+    console.debug("No active tab or getActiveTab method not available");
+  } catch (e) {
+    console.warn("Active tab detection failed", e);
+  }
+  return null;
+}
+
+/**
  * Handles the 'GitHubへPush' menu item click.
  */
 function showPushDialogHandler() {
   const doc = DocumentApp.getActiveDocument();
   const tabs = TegaruPress.getFlattenedTabs(doc); // タブ情報取得はライブラリに依頼
+  const activeTabId = getActiveTabId(doc); // 現在のアクティブタブを取得
 
   if (tabs.length > 1) {
     const htmlTemplate = HtmlService.createTemplateFromFile("TabSelectionDialog");
     htmlTemplate.tabs = tabs;
+    htmlTemplate.activeTabId = activeTabId; // アクティブタブIDを渡す
     htmlTemplate.action = "push"; // ダイアログのモードを'push'に設定
     const htmlOutput = htmlTemplate.evaluate().setWidth(400).setHeight(350);
     DocumentApp.getUi().showModalDialog(htmlOutput, "Pushするタブを選択");
@@ -74,10 +96,12 @@ function showPushDialogHandler() {
 function showPreviewDialogHandler() {
   const doc = DocumentApp.getActiveDocument();
   const tabs = TegaruPress.getFlattenedTabs(doc); // タブ情報取得はライブラリに依頼
+  const activeTabId = getActiveTabId(doc); // 現在のアクティブタブを取得
 
   if (tabs.length > 0) {
     const htmlTemplate = HtmlService.createTemplateFromFile("TabSelectionDialog");
     htmlTemplate.tabs = tabs;
+    htmlTemplate.activeTabId = activeTabId; // アクティブタブIDを渡す
     htmlTemplate.action = "preview"; // ダイアログのモードを'preview'に設定
     const htmlOutput = htmlTemplate.evaluate().setWidth(400).setHeight(350);
     DocumentApp.getUi().showModalDialog(htmlOutput, "プレビューするタブを選択");
