@@ -94,7 +94,7 @@ function _convertDataToMarkdown(dataObject, markdownBaseDir, imageSubDir, markdo
         const extension = element.contentType.split("/")[1].replace("jpeg", "jpg");
         const imageName = `${markdownFilePrefix}_${imageCounter}.${extension}`;
         const linkPath = `./${imageSubDir}/${imageName}`;
-        const uploadPath = `${markdownBaseDir ? `${markdownBaseDir}/` : ""}${imageSubDir}/${imageName}`;
+        const uploadPath = [markdownBaseDir, imageSubDir, imageName].filter(Boolean).join("/");
 
         images.push({ path: uploadPath, bytes: element.bytes });
         markdownChunk = `![${element.alt || imageName}](${linkPath})`;
