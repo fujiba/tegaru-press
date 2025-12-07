@@ -13,6 +13,12 @@ function _getPreviewData(doc, selectedTabId) {
   return _convertDataToMarkdown(dataObject, "", "images", "preview");
 }
 
+function _applyMarkdownWithHardBreaks(textSegments) {
+  const markdownText = _applyMarkdownToSegments(textSegments);
+  // パラグラフやリストアイテム内でも改行コードがあれば強制改行(  \n)に変換
+  return markdownText.replace(/[\r\n\v]+/g, '  \n');
+}
+
 /**
  * Converts the data object from the caller into a complete Markdown file content.
  * @private
@@ -77,21 +83,15 @@ function _convertDataToMarkdown(
             break;
           default:
             // パラグラフ内でも改行コードがあれば強制改行(  \n)に変換しておくのが親切
-            let paragraphText = _applyMarkdownToSegments(element.text);
-            paragraphText = paragraphText.replace(/[\r\n\v]+/g, '  \n');
-            markdownChunk = paragraphText;
+            markdownChunk = _applyMarkdownWithHardBreaks(element.text);
         }
         break;
       case "LIST_ITEM":
         const indent = "  ".repeat(element.nestingLevel || 0);
         const marker = element.isNumbered ? "1." : "-";
         
-        let listItemText = _applyMarkdownToSegments(element.text);
         // リストアイテム内でのShift+Enter(垂直タブ等)を Markdownの強制改行(スペース2つ+改行)に変換
-        // これでリスト内での改行が有効になるよ！
-        listItemText = listItemText.replace(/[\r\n\v]+/g, '  \n');
-        
-        markdownChunk = `${indent}${marker} ${listItemText}`;
+        markdownChunk = `${indent}${marker} ${_applyMarkdownWithHardBreaks(element.text)}`;
         break;
       case "IMAGE":
         imageCounter++;
@@ -103,22 +103,22 @@ function _convertDataToMarkdown(
         markdownChunk = `![${element.alt || imageName}](${linkPath})`;
         break;
       case "TABLE":
+         const formatCell = (segments) => {
+             // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
+             let md = _applyMarkdownToSegments(segments);
+             // Markdownテーブル内で壊れる文字をエスケープ/置換
+             // パイプ | はエスケープ
+             md = md.replace(/\|/g, '\\|');
+             // 改行は <br> タグに置換 (Markdownのテーブルセル内では改行コードが使えないため)
+             // \r, \n, \v (垂直タブ) をすべてキャッチして変換
+             md = md.replace(/[\r\n\v]+/g, '<br>');
+             return md;
+         };
+             
         if (element.rows && element.rows.length > 0) {
           // テーブルの各行を処理
           const tableMarkdown = element.rows.map((row, rowIndex) => {
              // セルごとのフォーマット関数
-             const formatCell = (segments) => {
-                 // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
-                 let md = _applyMarkdownToSegments(segments);
-                 // Markdownテーブル内で壊れる文字をエスケープ/置換
-                 // パイプ | はエスケープ
-                 md = md.replace(/\|/g, '\\|');
-                 // 改行は <br> タグに置換 (Markdownのテーブルセル内では改行コードが使えないため)
-                 // \r, \n, \v (垂直タブ) をすべてキャッチして変換
-                 md = md.replace(/[\r\n\v]+/g, '<br>');
-                 return md;
-             };
-             
              // 行の組み立て: | cell1 | cell2 | ... |
              const formattedRow = `| ${row.map(formatCell).join(' | ')} |`;
              
