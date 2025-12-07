@@ -23,10 +23,10 @@ function getSettings() {
 function saveSettings(formObject) {
   const docProps = PropertiesService.getDocumentProperties();
   const currentSettings = docProps.getProperties();
-  
+
   // 既存の設定とマージ
   const newSettings = { ...currentSettings, ...formObject };
-  
+
   // GITHUB_TOKENの処理
   if (formObject.GITHUB_TOKEN) {
     // ユーザーが新しく入力した場合 -> 暗号化して保存
@@ -36,7 +36,7 @@ function saveSettings(formObject) {
     // 空欄の場合 -> 既存の値を維持 (暗号化済みのまま)
     newSettings.GITHUB_TOKEN = currentSettings.GITHUB_TOKEN || "";
   }
-  
+
   docProps.setProperties(newSettings);
   return true;
 }

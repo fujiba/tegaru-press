@@ -11,15 +11,15 @@
  */
 function _getEncryptionSecret() {
   const props = PropertiesService.getScriptProperties();
-  let secret = props.getProperty('ENCRYPTION_SECRET');
-  
+  let secret = props.getProperty("ENCRYPTION_SECRET");
+
   if (!secret) {
     // 初回実行時など、キーがない場合はUUIDを生成して保存する
     secret = Utilities.getUuid();
-    props.setProperty('ENCRYPTION_SECRET', secret);
+    props.setProperty("ENCRYPTION_SECRET", secret);
     console.log("Initialized new encryption secret.");
   }
-  
+
   return secret;
 }
 
@@ -52,7 +52,7 @@ function _decrypt(encryptedText) {
     const secret = _getEncryptionSecret();
     const bytes = cCryptoGS.CryptoJS.AES.decrypt(encryptedText, secret);
     const originalText = bytes.toString(cCryptoGS.CryptoJS.enc.Utf8);
-    
+
     // 復号結果が空（キー不一致などでゴミデータになった場合）のチェック
     if (!originalText && encryptedText.length > 0) {
       throw new Error("Invalid decryption result");
@@ -60,6 +60,8 @@ function _decrypt(encryptedText) {
     return originalText;
   } catch (e) {
     console.error("Decryption failed:", e);
-    throw new Error("GitHubトークンの復号に失敗しました。ScriptPropertiesのキーが変更された可能性があります。");
+    throw new Error(
+      "GitHubトークンの復号に失敗しました。ScriptPropertiesのキーが変更された可能性があります。",
+    );
   }
 }

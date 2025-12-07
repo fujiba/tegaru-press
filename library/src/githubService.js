@@ -9,7 +9,7 @@
  */
 function _pushFilesAsSingleCommit(files, commitMessage, settings) {
   const decryptedToken = _decrypt(settings.GITHUB_TOKEN);
-  
+
   const { GITHUB_USER, GITHUB_REPO } = settings;
   const branch = settings.BRANCH_NAME || "main";
 
@@ -22,14 +22,14 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     `${apiBase}/git/refs/heads/${branch}`,
     "GET",
     null,
-    decryptedToken
+    decryptedToken,
   );
   const latestCommitSha = refData.object.sha;
   const commitData = __githubApiRequest(
     `${apiBase}/git/commits/${latestCommitSha}`,
     "GET",
     null,
-    decryptedToken
+    decryptedToken,
   );
   const baseTreeSha = commitData.tree.sha;
 
@@ -43,7 +43,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
           : Utilities.base64Encode(file.content, Utilities.Charset.UTF_8),
         encoding: "base64",
       },
-      decryptedToken
+      decryptedToken,
     );
 
     return { path: file.path, mode: "100644", type: "blob", sha: blobData.sha };
@@ -56,7 +56,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
       base_tree: baseTreeSha,
       tree: treeElements,
     },
-    decryptedToken
+    decryptedToken,
   );
 
   const newCommitData = __githubApiRequest(
@@ -67,7 +67,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
       tree: newTreeData.sha,
       parents: [latestCommitSha],
     },
-    decryptedToken
+    decryptedToken,
   );
 
   __githubApiRequest(
@@ -76,7 +76,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     {
       sha: newCommitData.sha,
     },
-    decryptedToken
+    decryptedToken,
   );
 }
 
@@ -104,9 +104,6 @@ function __githubApiRequest(url, method, payload, token) {
 
   if (responseCode >= 200 && responseCode < 300) {
     return JSON.parse(responseBody);
-  } else {
-    throw new Error(
-      `GitHub API Error (${url}, Code: ${responseCode}): ${responseBody}`
-    );
   }
+  throw new Error(`GitHub API Error (${url}, Code: ${responseCode}): ${responseBody}`);
 }

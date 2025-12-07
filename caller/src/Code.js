@@ -115,8 +115,9 @@ function showPreviewDialogHandler() {
  * This now shows a dialog to get initial data.
  */
 function insertFrontMatterHandler() {
-  const html = HtmlService.createTemplateFromFile("NewPageDialog").evaluate()
-      .setTitle("フロントマター設定");
+  const html = HtmlService.createTemplateFromFile("NewPageDialog")
+    .evaluate()
+    .setTitle("フロントマター設定");
   DocumentApp.getUi().showModalDialog(html, "フロントマター設定");
 }
 

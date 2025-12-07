@@ -62,9 +62,7 @@ function _buildAllDocumentData(doc, selectedTabIds) {
       const documentData = _buildDocumentData(doc, tabId);
       if (!documentData.frontMatter.file_path) {
         const tabTitle = _findTabById(tabs, tabId).getTitle();
-        throw new Error(
-          `タブ「${tabTitle}」のフロントマターに 'file_path' がありません。`
-        );
+        throw new Error(`タブ「${tabTitle}」のフロントマターに 'file_path' がありません。`);
       }
       allDataObjects.push(documentData);
     });
@@ -72,7 +70,7 @@ function _buildAllDocumentData(doc, selectedTabIds) {
     const documentData = _buildDocumentData(doc, null);
     if (!documentData.frontMatter.file_path) {
       throw new Error(
-        "フロントマターに 'file_path' が設定されていません。ドキュメント先頭のテーブルを確認してください。"
+        "フロントマターに 'file_path' が設定されていません。ドキュメント先頭のテーブルを確認してください。",
       );
     }
     allDataObjects.push(documentData);
@@ -171,7 +169,7 @@ function _parseElement(child) {
   const type = child.getType();
 
   switch (type) {
-    case DocumentApp.ElementType.PARAGRAPH:
+    case DocumentApp.ElementType.PARAGRAPH: {
       const paragraph = child.asParagraph();
       const img = paragraph.findElement(DocumentApp.ElementType.INLINE_IMAGE);
       if (img) {
@@ -197,8 +195,9 @@ function _parseElement(child) {
         }
       }
       break;
+    }
 
-    case DocumentApp.ElementType.LIST_ITEM:
+    case DocumentApp.ElementType.LIST_ITEM: {
       const listItem = child.asListItem();
       if (listItem.getText().trim() !== "") {
         const glyph = listItem.getGlyphType();
@@ -213,8 +212,8 @@ function _parseElement(child) {
         };
       }
       break;
-
-    case DocumentApp.ElementType.TABLE:
+    }
+    case DocumentApp.ElementType.TABLE: {
       const table = child.asTable();
       const tableRows = [];
       for (let r = 0; r < table.getNumRows(); r++) {
@@ -222,7 +221,7 @@ function _parseElement(child) {
         const rowData = [];
         for (let c = 0; c < row.getNumCells(); c++) {
           const cell = row.getCell(c);
-          let cellSegments = [];
+          const cellSegments = [];
           // Process all children in the cell (mainly paragraphs)
           for (let k = 0; k < cell.getNumChildren(); k++) {
             const cellChild = cell.getChild(k);
@@ -241,10 +240,11 @@ function _parseElement(child) {
       if (tableRows.length > 0) {
         elementData = {
           type: "TABLE",
-          rows: tableRows
+          rows: tableRows,
         };
       }
       break;
+    }
   }
 
   return elementData;

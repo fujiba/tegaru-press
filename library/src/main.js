@@ -19,8 +19,8 @@
  */
 function push(doc, selectedTabIds) {
   // Settings.jsから呼び出し
-  const settings = getSettings(); 
-  
+  const settings = getSettings();
+
   // DocumentParser.jsから呼び出し
   const allDataObjects = _buildAllDocumentData(doc, selectedTabIds);
 
@@ -42,14 +42,10 @@ function _pushDataObjects(dataObjects, settings) {
 
   dataObjects.forEach((dataObject) => {
     if (!dataObject.frontMatter.file_path) {
-      throw new Error(
-        "An item was passed without a 'file_path' in its front matter."
-      );
+      throw new Error("An item was passed without a 'file_path' in its front matter.");
     }
 
-    const finalPath = [contentRoot, dataObject.frontMatter.file_path]
-      .filter(Boolean)
-      .join("/");
+    const finalPath = [contentRoot, dataObject.frontMatter.file_path].filter(Boolean).join("/");
     const markdownFilePrefix = finalPath
       .split("/")
       .pop()
@@ -64,7 +60,7 @@ function _pushDataObjects(dataObjects, settings) {
       dataObject,
       markdownDir,
       imageSubDir,
-      markdownFilePrefix
+      markdownFilePrefix,
     );
 
     if (!markdown) return; // Skip empty sections
@@ -91,9 +87,8 @@ function _pushDataObjects(dataObjects, settings) {
   }
 
   const commitMessage =
-    settings.COMMIT_MESSAGE ||
-    `Update ${allFilesToCommit.length} file(s) from Google Docs`;
-    
+    settings.COMMIT_MESSAGE || `Update ${allFilesToCommit.length} file(s) from Google Docs`;
+
   // GitHubApi.jsから呼び出し
   _pushFilesAsSingleCommit(allFilesToCommit, commitMessage, settings);
 }
@@ -108,12 +103,7 @@ function getMarkdown(doc, selectedTabId) {
   // DocumentParser.jsから呼び出し
   const dataObject = _buildDocumentData(doc, selectedTabId);
   // MarkdownBuilder.jsから呼び出し
-  const { markdown } = _convertDataToMarkdown(
-    dataObject,
-    "",
-    "images",
-    "preview"
-  );
+  const { markdown } = _convertDataToMarkdown(dataObject, "", "images", "preview");
   return markdown;
 }
 
@@ -133,13 +123,18 @@ function executeInsertFrontMatter(formObject) {
     // --- データ生成ロジック ---
     const dateObj = new Date(date);
     const formattedDate = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyyMMdd");
-    const slug = title.toLowerCase()
-      .replace(/\s+/g, '-') // スペースをハイフンに置換
-      .replace(/[\\/?%*:|"<>.]/g, '-') // ファイルパスとして不適切な文字をハイフンに置換
-      .replace(/--+/g, '-') // 連続するハイフンを1つにまとめる
-      .replace(/^-+|-+$/g, ''); // 先頭と末尾のハイフンを削除
+    const slug = title
+      .toLowerCase()
+      .replace(/\s+/g, "-") // スペースをハイフンに置換
+      .replace(/[\\/?%*:|"<>.]/g, "-") // ファイルパスとして不適切な文字をハイフンに置換
+      .replace(/--+/g, "-") // 連続するハイフンを1つにまとめる
+      .replace(/^-+|-+$/g, ""); // 先頭と末尾のハイフンを削除
     const filePath = [`${formattedDate}-${slug}`, "index.md"].filter(Boolean).join("/");
-    const formattedDateTime = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm:ss");
+    const formattedDateTime = Utilities.formatDate(
+      dateObj,
+      Session.getScriptTimeZone(),
+      "yyyy/MM/dd HH:mm:ss",
+    );
     // --- データ生成ロジックここまで ---
 
     const body = DocumentApp.getActiveDocument().getBody();
@@ -159,7 +154,11 @@ function executeInsertFrontMatter(formObject) {
       ["authors", "", "著者名 (複数名はカンマ区切り)(任意)"],
       ["tags", "", "タグ (複数指定はカンマ区切り)(任意)"],
       ["categories", "", "カテゴリ (複数指定はカンマ区切り)(任意)"],
-      ["date", formattedDateTime, "公開日時 (例: 2023/10/27 10:00)。空欄の場合はPush時の日時。(*必須)"],
+      [
+        "date",
+        formattedDateTime,
+        "公開日時 (例: 2023/10/27 10:00)。空欄の場合はPush時の日時。(*必須)",
+      ],
       ["draft", "false", "'true'にすると下書き扱いになります(*必須)"],
     ];
 
@@ -186,7 +185,6 @@ function executeInsertFrontMatter(formObject) {
     // タイトルを見出し1として挿入
     const h1 = body.insertParagraph(2, title);
     h1.setHeading(DocumentApp.ParagraphHeading.HEADING1);
-
   } catch (e) {
     DocumentApp.getUi().alert(`フロントマターの挿入中にエラーが発生しました:\n${e.message}`);
   }
@@ -211,7 +209,7 @@ function executePreviewFromDialog(selectedTabId) {
   try {
     const doc = DocumentApp.getActiveDocument();
     const tabId = Array.isArray(selectedTabId) ? selectedTabId[0] : selectedTabId;
-    
+
     // MarkdownBuilder.jsから呼び出し
     const { markdown, images } = _getPreviewData(doc, tabId);
 
@@ -220,7 +218,7 @@ function executePreviewFromDialog(selectedTabId) {
       return;
     }
 
-    const imagePayload = images.map(image => {
+    const imagePayload = images.map((image) => {
       let mimeType = "image/jpeg";
       if (image.path.toLowerCase().endsWith(".png")) {
         mimeType = "image/png";
@@ -228,8 +226,8 @@ function executePreviewFromDialog(selectedTabId) {
         mimeType = "image/gif";
       }
       return {
-        path: "./" + image.path,
-        data: `data:${mimeType};base64,${Utilities.base64Encode(image.bytes)}`
+        path: `./${image.path}`,
+        data: `data:${mimeType};base64,${Utilities.base64Encode(image.bytes)}`,
       };
     });
 
@@ -237,10 +235,9 @@ function executePreviewFromDialog(selectedTabId) {
     const template = HtmlService.createTemplateFromFile("PreviewDialog");
     template.content = markdown;
     template.images = JSON.stringify(imagePayload);
-    
+
     const htmlOutput = template.evaluate().setWidth(1050).setHeight(750);
     DocumentApp.getUi().showModalDialog(htmlOutput, "Markdown プレビュー");
-
   } catch (e) {
     Logger.log(e);
     DocumentApp.getUi().alert(`プレビュー中にエラーが発生しました:\n${e.message}`);
