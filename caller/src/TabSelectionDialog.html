@@ -56,11 +56,14 @@
         <div class="tab-list">
           <? if (action === 'push') { ?>
             <? for (var i = 0; i < tabs.length; i++) { ?>
-              <label><input type="checkbox" name="selected_tabs" value="<?= tabs[i].id ?>"> <?= tabs[i].title ?></label>
+              <!-- activeTabIdと一致すればチェック -->
+              <label><input type="checkbox" name="selected_tabs" value="<?= tabs[i].id ?>" <?= tabs[i].id === activeTabId ? 'checked' : '' ?>> <?= tabs[i].title ?></label>
             <? } ?>
           <? } else { ?>
+            <!-- プレビューの場合はラジオボタン -->
             <? for (var i = 0; i < tabs.length; i++) { ?>
-              <label><input type="radio" name="selected_tabs" value="<?= tabs[i].id ?>"> <?= tabs[i].title ?></label>
+              <!-- activeTabIdと一致、またはactiveTabIdがなくて最初の要素ならチェック -->
+              <label><input type="radio" name="selected_tabs" value="<?= tabs[i].id ?>" <?= (tabs[i].id === activeTabId || (!activeTabId && i === 0)) ? 'checked' : '' ?>> <?= tabs[i].title ?></label>
             <? } ?>
           <? } ?>
         </div>
@@ -78,13 +81,47 @@
       document.getElementById("tab-selection-form").addEventListener("submit", function (e) {
         e.preventDefault();
         const btn = document.getElementById("action-btn");
+        const originalLabel = btn.textContent;
+
+        // this.elements.selected_tabs は要素が1つだけの場合に配列化できないため、querySelectorAllで集める
+        const selected = Array.from(
+          this.querySelectorAll('input[name="selected_tabs"]:checked'),
+        ).map((el) => el.value);
+
+        if (selected.length === 0) {
+          alert("タブを1つ以上選択してください。");
+          return;
+        }
+
         btn.disabled = true;
         btn.textContent = "処理中...";
 
-        const selected = Array.from(this.elements.selected_tabs).filter(el => el.checked).map(el => el.value);
+        const restoreButton = () => {
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+        };
         const action = "<?= action ?>";
-        const serverFunction = action === 'push' ? '_executePushForTabs' : '_executePreviewForTab';
-        google.script.run.withSuccessHandler(() => google.script.host.close())[serverFunction](selected);
+
+        // actionの値に応じて、正しいサーバー側関数を直接呼び出す
+        // エラーはサーバー側でalert表示されるが、通信断などに備えてfailureHandlerも用意する
+        if (action === 'push') {
+          google.script.run
+            .withSuccessHandler(() => google.script.host.close())
+            .withFailureHandler((error) => {
+              alert("Pushに失敗しました: " + error.message);
+              restoreButton();
+            })
+            .executePushFromDialog(selected);
+        } else {
+          // プレビューの場合は、ダイアログを閉じる前にプレビューダイアログが表示されるのを待つ
+          // そのため、withSuccessHandlerで即時closeしない
+          google.script.run
+            .withFailureHandler((error) => {
+              alert("プレビューに失敗しました: " + error.message);
+              restoreButton();
+            })
+            .executePreviewFromDialog(selected);
+        }
       });
     </script>
   </body>

@@ -18,12 +18,12 @@ cd library || { echo "❌ 'library' ディレクトリが見つかりません�
 
 echo ""
 echo "-> ライブラリのコードをpushしています..."
-clasp push
+pnpm exec clasp push
 
 echo ""
 echo "-> 新しいバージョンをデプロイしています..."
-# clasp deploy の実行結果をキャプチャ
-DEPLOY_OUTPUT=$(clasp deploy -d "$DEPLOY_DESCRIPTION")
+# pnpm exec clasp deploy の実行結果をキャプチャ
+DEPLOY_OUTPUT=$(pnpm exec clasp deploy -d "$DEPLOY_DESCRIPTION")
 # 実行結果からバージョン番号を抽出 (例: @5 -> 5)
 NEW_VERSION=$(echo "$DEPLOY_OUTPUT" | grep -o '@[0-9]*' | tr -d '@')
 
@@ -57,7 +57,7 @@ echo "✅ マニフェストファイルのバージョンを $NEW_VERSION に�
 # 4. 更新されたcallerをpush
 echo ""
 echo "-> 更新されたcallerのテンプレートをGoogleドキュメントにpushしています..."
-clasp push --force
+pnpm exec clasp push --force
 
 cd ..
 echo ""

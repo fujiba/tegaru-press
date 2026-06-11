@@ -18,12 +18,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install clasp
-        run: npm install -g @google/clasp
+          cache: "pnpm"
+      - name: Install dependencies
+        # claspはlockfileに固定されたバージョンを使う（サプライチェーン対策）
+        run: pnpm install --frozen-lockfile
       - name: Setup clasp credentials
         run: echo '${{ secrets.CLASP_TOKEN }}' > ~/.clasprc.json
       - name: Deploy Library
@@ -31,12 +35,12 @@ jobs:
           cd library
           # .clasp.jsonをSecretsから生成
           echo '{"scriptId":"${{ secrets.LIBRARY_SCRIPT_ID }}"}' > .clasp.json
-          clasp push
+          pnpm exec clasp push
           # 新しいバージョンを作成し、そのバージョン番号を取得
-          VERSION=$(clasp version "Automated deployment from GitHub Actions" | awk '{print $2}')
+          VERSION=$(pnpm exec clasp version "Automated deployment from GitHub Actions" | awk '{print $2}')
           echo "NEW_VERSION=${VERSION}" >> $GITHUB_ENV
           # 新しいバージョンでデプロイ
-          clasp deploy --versionNumber ${VERSION} --description "CI: Deploy version ${VERSION}"
+          pnpm exec clasp deploy --versionNumber ${VERSION} --description "CI: Deploy version ${VERSION}"
           cd ..
       - name: Update Template Caller Script
         run: |
@@ -47,7 +51,7 @@ jobs:
           echo '{"scriptId":"${{ secrets.TEMPLATE_SCRIPT_ID }}","rootDir":"src"}' > .clasp.json
 
           # テンプレートのスクリプトを強制的にpushして更新
-          clasp push --force
+          pnpm exec clasp push --force
 
           echo "Template updated to use library version ${{ env.NEW_VERSION }}"
           cd ..
