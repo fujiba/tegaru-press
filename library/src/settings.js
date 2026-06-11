@@ -66,7 +66,7 @@ function saveSettings(formObject) {
   }
 
   docProps.setProperties(newSettings);
-  // 旧バージョンが暗号化トークンをドキュメントプロパティに保存していたため、残骸を掃除する
+  // 旧バージョンがトークンをドキュメントプロパティに保存していたため、残骸を掃除する
   docProps.deleteProperty("GITHUB_TOKEN");
   return true;
 }
