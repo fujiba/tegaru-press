@@ -42,3 +42,4 @@ node_modules
 caller/src/appsscript.json
 addon/src/appsscript.json
 /.gemini/
+.serena/
