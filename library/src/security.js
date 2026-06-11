@@ -9,15 +9,26 @@
  * @returns {string} 暗号化キー
  * @private
  */
-function _getEncryptionSecret() {
+function getEncryptionSecret_() {
   const props = PropertiesService.getScriptProperties();
   let secret = props.getProperty("ENCRYPTION_SECRET");
+  if (secret) {
+    return secret;
+  }
 
-  if (!secret) {
-    // 初回実行時など、キーがない場合はUUIDを生成して保存する
-    secret = Utilities.getUuid();
-    props.setProperty("ENCRYPTION_SECRET", secret);
-    console.log("Initialized new encryption secret.");
+  // 初回実行時など、キーがない場合はUUIDを生成して保存する。
+  // 同時実行でキーが二重生成されると、先に保存されたトークンが復号不能になるためロックする
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    secret = props.getProperty("ENCRYPTION_SECRET");
+    if (!secret) {
+      secret = Utilities.getUuid();
+      props.setProperty("ENCRYPTION_SECRET", secret);
+      console.log("Initialized new encryption secret.");
+    }
+  } finally {
+    lock.releaseLock();
   }
 
   return secret;
@@ -29,10 +40,10 @@ function _getEncryptionSecret() {
  * @returns {string} 暗号化された文字列
  * @private
  */
-function _encrypt(text) {
+function encrypt_(text) {
   if (!text) return "";
   try {
-    const secret = _getEncryptionSecret();
+    const secret = getEncryptionSecret_();
     return cCryptoGS.CryptoJS.AES.encrypt(text, secret).toString();
   } catch (e) {
     console.error("Encryption failed:", e);
@@ -46,10 +57,10 @@ function _encrypt(text) {
  * @returns {string} 復号された平文
  * @private
  */
-function _decrypt(encryptedText) {
+function decrypt_(encryptedText) {
   if (!encryptedText) return "";
   try {
-    const secret = _getEncryptionSecret();
+    const secret = getEncryptionSecret_();
     const bytes = cCryptoGS.CryptoJS.AES.decrypt(encryptedText, secret);
     const originalText = bytes.toString(cCryptoGS.CryptoJS.enc.Utf8);
 

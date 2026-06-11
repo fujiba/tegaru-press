@@ -10,14 +10,14 @@
  */
 function getFlattenedTabs(doc) {
   const tabs = doc.getTabs ? doc.getTabs() : [];
-  return _flattenTabs(tabs);
+  return flattenTabs_(tabs);
 }
 
 /**
  * Recursively flattens the tab structure into a single array for UI display.
  * @private
  */
-function _flattenTabs(tabs, level = 0) {
+function flattenTabs_(tabs, level = 0) {
   if (!tabs || tabs.length === 0) return [];
   let flatList = [];
   const indent = "  ".repeat(level);
@@ -30,7 +30,7 @@ function _flattenTabs(tabs, level = 0) {
     flatList.push({ id: tab.getId(), title: indent + tab.getTitle() });
     const childTabs = tab.getChildTabs();
     if (childTabs.length > 0) {
-      flatList = flatList.concat(_flattenTabs(childTabs, level + 1));
+      flatList = flatList.concat(flattenTabs_(childTabs, level + 1));
     }
   });
   return flatList;
@@ -40,10 +40,10 @@ function _flattenTabs(tabs, level = 0) {
  * Finds a tab by its ID within a nested tab structure.
  * @private
  */
-function _findTabById(tabs, tabId) {
+function findTabById_(tabs, tabId) {
   for (const tab of tabs) {
     if (tab.getId() === tabId) return tab;
-    const foundInChild = _findTabById(tab.getChildTabs(), tabId);
+    const foundInChild = findTabById_(tab.getChildTabs(), tabId);
     if (foundInChild) return foundInChild;
   }
   return null;
@@ -53,21 +53,21 @@ function _findTabById(tabs, tabId) {
  * Builds data objects for all specified tabs or the main body.
  * @private
  */
-function _buildAllDocumentData(doc, selectedTabIds) {
+function buildAllDocumentData_(doc, selectedTabIds) {
   const allDataObjects = [];
   const tabs = doc.getTabs ? doc.getTabs() : [];
 
   if (selectedTabIds && selectedTabIds.length > 0) {
     selectedTabIds.forEach((tabId) => {
-      const documentData = _buildDocumentData(doc, tabId);
+      const documentData = buildDocumentData_(doc, tabId);
       if (!documentData.frontMatter.file_path) {
-        const tabTitle = _findTabById(tabs, tabId).getTitle();
+        const tabTitle = findTabById_(tabs, tabId).getTitle();
         throw new Error(`タブ「${tabTitle}」のフロントマターに 'file_path' がありません。`);
       }
       allDataObjects.push(documentData);
     });
   } else {
-    const documentData = _buildDocumentData(doc, null);
+    const documentData = buildDocumentData_(doc, null);
     if (!documentData.frontMatter.file_path) {
       throw new Error(
         "フロントマターに 'file_path' が設定されていません。ドキュメント先頭のテーブルを確認してください。",
@@ -83,10 +83,10 @@ function _buildAllDocumentData(doc, selectedTabIds) {
  * Refactored to orchestrate smaller helper functions.
  * @private
  */
-function _buildDocumentData(doc, tabId) {
-  const body = _getBodyFromDocOrTab(doc, tabId);
-  const { frontMatter, contentStartIndex } = _extractFrontMatter(body);
-  const documentData = _parseBodyContent(body, contentStartIndex);
+function buildDocumentData_(doc, tabId) {
+  const body = getBodyFromDocOrTab_(doc, tabId);
+  const { frontMatter, contentStartIndex } = extractFrontMatter_(body);
+  const documentData = parseBodyContent_(body, contentStartIndex);
 
   return { frontMatter, documentData };
 }
@@ -95,9 +95,9 @@ function _buildDocumentData(doc, tabId) {
  * Retrieves the Body object from either a specific tab or the main document.
  * @private
  */
-function _getBodyFromDocOrTab(doc, tabId) {
+function getBodyFromDocOrTab_(doc, tabId) {
   if (tabId) {
-    const tab = _findTabById(doc.getTabs(), tabId);
+    const tab = findTabById_(doc.getTabs(), tabId);
     if (!tab) throw new Error(`指定されたタブ（ID: ${tabId}）が見つかりません。`);
     return tab.asDocumentTab().getBody();
   }
@@ -108,7 +108,7 @@ function _getBodyFromDocOrTab(doc, tabId) {
  * Extracts front matter from the beginning of the document body.
  * @private
  */
-function _extractFrontMatter(body) {
+function extractFrontMatter_(body) {
   const numChildren = body.getNumChildren();
   const frontMatter = {};
   let contentStartIndex = 0;
@@ -146,13 +146,13 @@ function _extractFrontMatter(body) {
  * Iterates through the body content starting from the given index and parses elements.
  * @private
  */
-function _parseBodyContent(body, startIndex) {
+function parseBodyContent_(body, startIndex) {
   const numChildren = body.getNumChildren();
   const documentData = [];
 
   for (let i = startIndex; i < numChildren; i++) {
     const child = body.getChild(i);
-    const elementData = _parseElement(child);
+    const elementData = parseElement_(child);
     if (elementData) {
       documentData.push(elementData);
     }
@@ -164,7 +164,7 @@ function _parseBodyContent(body, startIndex) {
  * Parses a single document element (Paragraph, List Item, or Table) into a data object.
  * @private
  */
-function _parseElement(child) {
+function parseElement_(child) {
   let elementData = null;
   const type = child.getType();
 
@@ -186,7 +186,7 @@ function _parseElement(child) {
       } else if (paragraph.getText().trim() !== "") {
         elementData = {
           type: "PARAGRAPH",
-          text: _processTextAttributes(paragraph.asText()),
+          text: processTextAttributes_(paragraph.asText()),
           heading: paragraph.getHeading().toString(),
         };
         const combinedText = elementData.text.map((s) => s.text).join("");
@@ -203,7 +203,7 @@ function _parseElement(child) {
         const glyph = listItem.getGlyphType();
         elementData = {
           type: "LIST_ITEM",
-          text: _processTextAttributes(listItem.asText()),
+          text: processTextAttributes_(listItem.asText()),
           nestingLevel: listItem.getNestingLevel(),
           isNumbered:
             glyph === DocumentApp.GlyphType.NUMBER ||
@@ -226,7 +226,7 @@ function _parseElement(child) {
           for (let k = 0; k < cell.getNumChildren(); k++) {
             const cellChild = cell.getChild(k);
             if (cellChild.getType() === DocumentApp.ElementType.PARAGRAPH) {
-              const segments = _processTextAttributes(cellChild.asParagraph().asText());
+              const segments = processTextAttributes_(cellChild.asParagraph().asText());
               if (k > 0) {
                 cellSegments.push({ text: "\n", attributes: {} });
               }
@@ -254,7 +254,7 @@ function _parseElement(child) {
  * Processes text attributes (bold, italic, link) for a text element.
  * @private
  */
-function _processTextAttributes(textElement) {
+function processTextAttributes_(textElement) {
   const text = textElement.getText();
   if (text === null || text.trim() === "") return [{ text: text, attributes: {} }];
 

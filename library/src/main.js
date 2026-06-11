@@ -18,25 +18,25 @@
  * @param {Array<string>|null} selectedTabIds An array of tab IDs to push. If null, the main body is used.
  */
 function push(doc, selectedTabIds) {
-  // Settings.jsから呼び出し
-  const settings = getSettings();
+  // Settings.jsから呼び出し（復号対象のトークンが必要なため内部用を使う）
+  const settings = getSettingsInternal_();
 
   // DocumentParser.jsから呼び出し
-  const allDataObjects = _buildAllDocumentData(doc, selectedTabIds);
+  const allDataObjects = buildAllDocumentData_(doc, selectedTabIds);
 
   if (allDataObjects.length === 0) {
     throw new Error("Pushするコンテンツがありません。");
   }
 
   // 下のローカル関数呼び出し
-  _pushDataObjects(allDataObjects, settings);
+  pushDataObjects_(allDataObjects, settings);
 }
 
 /**
  * Processes and pushes an array of data objects to GitHub.
  * @private
  */
-function _pushDataObjects(dataObjects, settings) {
+function pushDataObjects_(dataObjects, settings) {
   const allFilesToCommit = [];
   const contentRoot = settings.CONTENT_ROOT_PATH || "";
 
@@ -56,7 +56,7 @@ function _pushDataObjects(dataObjects, settings) {
       : "";
 
     // MarkdownBuilder.jsから呼び出し
-    const { markdown, images } = _convertDataToMarkdown(
+    const { markdown, images } = convertDataToMarkdown_(
       dataObject,
       markdownDir,
       imageSubDir,
@@ -90,7 +90,7 @@ function _pushDataObjects(dataObjects, settings) {
     settings.COMMIT_MESSAGE || `Update ${allFilesToCommit.length} file(s) from Google Docs`;
 
   // GitHubApi.jsから呼び出し
-  _pushFilesAsSingleCommit(allFilesToCommit, commitMessage, settings);
+  pushFilesAsSingleCommit_(allFilesToCommit, commitMessage, settings);
 }
 
 /**
@@ -101,9 +101,9 @@ function _pushDataObjects(dataObjects, settings) {
  */
 function getMarkdown(doc, selectedTabId) {
   // DocumentParser.jsから呼び出し
-  const dataObject = _buildDocumentData(doc, selectedTabId);
+  const dataObject = buildDocumentData_(doc, selectedTabId);
   // MarkdownBuilder.jsから呼び出し
-  const { markdown } = _convertDataToMarkdown(dataObject, "", "images", "preview");
+  const { markdown } = convertDataToMarkdown_(dataObject, "", "images", "preview");
   return markdown;
 }
 
@@ -195,9 +195,14 @@ function executeInsertFrontMatter(formObject) {
  * @param {Array<string>|null} selectedTabIds 選択されたタブIDの配列。
  */
 function executePushFromDialog(selectedTabIds) {
-  const doc = DocumentApp.getActiveDocument(); // このコンテキストでdocを取得
-  push(doc, selectedTabIds);
-  DocumentApp.getUi().alert("コンテンツのPushが完了しました。");
+  try {
+    const doc = DocumentApp.getActiveDocument(); // このコンテキストでdocを取得
+    push(doc, selectedTabIds);
+    DocumentApp.getUi().alert("コンテンツのPushが完了しました。");
+  } catch (e) {
+    Logger.log(e);
+    DocumentApp.getUi().alert(`Push中にエラーが発生しました:\n${e.message}`);
+  }
 }
 
 /**
@@ -211,7 +216,7 @@ function executePreviewFromDialog(selectedTabId) {
     const tabId = Array.isArray(selectedTabId) ? selectedTabId[0] : selectedTabId;
 
     // MarkdownBuilder.jsから呼び出し
-    const { markdown, images } = _getPreviewData(doc, tabId);
+    const { markdown, images } = getPreviewData_(doc, tabId);
 
     if (!markdown || markdown.trim() === "---") {
       DocumentApp.getUi().alert("ドキュメントが空か、フロントマターしかありません。");

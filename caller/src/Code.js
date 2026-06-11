@@ -33,7 +33,12 @@ function saveSettings(formObject) {
  * @param {Array<string>|null} selectedTabIds 選択されたタブIDの配列。
  */
 function executePushFromDialog(selectedTabIds) {
-  TegaruPress.executePushFromDialog(selectedTabIds);
+  try {
+    TegaruPress.executePushFromDialog(selectedTabIds);
+  } catch (e) {
+    Logger.log(e);
+    DocumentApp.getUi().alert(`Push中にエラーが発生しました:\n${e.message}`);
+  }
 }
 
 /**
@@ -85,8 +90,16 @@ function showPushDialogHandler() {
     const htmlOutput = htmlTemplate.evaluate().setWidth(400).setHeight(350);
     DocumentApp.getUi().showModalDialog(htmlOutput, "Pushするタブを選択");
   } else {
-    // タブがない、または1つだけの場合は直接実行
-    executePushFromDialog(null);
+    // タブがない、または1つだけの場合は確認のうえ直接実行
+    const ui = DocumentApp.getUi();
+    const response = ui.alert(
+      "GitHubへPush",
+      "ドキュメントの内容をGitHubへPushします。よろしいですか？",
+      ui.ButtonSet.OK_CANCEL,
+    );
+    if (response === ui.Button.OK) {
+      executePushFromDialog(null);
+    }
   }
 }
 

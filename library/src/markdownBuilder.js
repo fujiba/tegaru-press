@@ -8,13 +8,13 @@
  * Internal helper for executePreviewFromDialog.
  * @return {object} { markdown: string, images: Array }
  */
-function _getPreviewData(doc, selectedTabId) {
-  const dataObject = _buildDocumentData(doc, selectedTabId);
-  return _convertDataToMarkdown(dataObject, "", "images", "preview");
+function getPreviewData_(doc, selectedTabId) {
+  const dataObject = buildDocumentData_(doc, selectedTabId);
+  return convertDataToMarkdown_(dataObject, "", "images", "preview");
 }
 
-function _applyMarkdownWithHardBreaks(textSegments) {
-  const markdownText = _applyMarkdownToSegments(textSegments);
+function applyMarkdownWithHardBreaks_(textSegments) {
+  const markdownText = applyMarkdownToSegments_(textSegments);
   // パラグラフやリストアイテム内でも改行コードがあれば強制改行(  \n)に変換
   return markdownText.replace(/[\r\n\v]+/g, "  \n");
 }
@@ -23,7 +23,7 @@ function _applyMarkdownWithHardBreaks(textSegments) {
  * Converts the data object from the caller into a complete Markdown file content.
  * @private
  */
-function _convertDataToMarkdown(dataObject, markdownBaseDir, imageSubDir, markdownFilePrefix) {
+function convertDataToMarkdown_(dataObject, markdownBaseDir, imageSubDir, markdownFilePrefix) {
   const { frontMatter, documentData } = dataObject;
   const images = [];
   let imageCounter = 0;
@@ -68,17 +68,17 @@ function _convertDataToMarkdown(dataObject, markdownBaseDir, imageSubDir, markdo
         switch (element.heading) {
           case "TITLE":
           case "HEADING1":
-            markdownChunk = `# ${_applyMarkdownToSegments(element.text)}`;
+            markdownChunk = `# ${applyMarkdownToSegments_(element.text)}`;
             break;
           case "HEADING2":
-            markdownChunk = `## ${_applyMarkdownToSegments(element.text)}`;
+            markdownChunk = `## ${applyMarkdownToSegments_(element.text)}`;
             break;
           case "HEADING3":
-            markdownChunk = `### ${_applyMarkdownToSegments(element.text)}`;
+            markdownChunk = `### ${applyMarkdownToSegments_(element.text)}`;
             break;
           default:
             // パラグラフ内でも改行コードがあれば強制改行(  \n)に変換しておくのが親切
-            markdownChunk = _applyMarkdownWithHardBreaks(element.text);
+            markdownChunk = applyMarkdownWithHardBreaks_(element.text);
         }
         break;
       case "LIST_ITEM": {
@@ -86,7 +86,7 @@ function _convertDataToMarkdown(dataObject, markdownBaseDir, imageSubDir, markdo
         const marker = element.isNumbered ? "1." : "-";
 
         // リストアイテム内でのShift+Enter(垂直タブ等)を Markdownの強制改行(スペース2つ+改行)に変換
-        markdownChunk = `${indent}${marker} ${_applyMarkdownWithHardBreaks(element.text)}`;
+        markdownChunk = `${indent}${marker} ${applyMarkdownWithHardBreaks_(element.text)}`;
         break;
       }
       case "IMAGE": {
@@ -102,8 +102,8 @@ function _convertDataToMarkdown(dataObject, markdownBaseDir, imageSubDir, markdo
       }
       case "TABLE": {
         const formatCell = (segments) => {
-          // segmentsは配列なので _applyMarkdownToSegments でMarkdown化
-          let md = _applyMarkdownToSegments(segments);
+          // segmentsは配列なので applyMarkdownToSegments_ でMarkdown化
+          let md = applyMarkdownToSegments_(segments);
           // Markdownテーブル内で壊れる文字をエスケープ/置換
           // パイプ | はエスケープ
           md = md.replace(/\|/g, "\\|");
@@ -160,7 +160,7 @@ function _convertDataToMarkdown(dataObject, markdownBaseDir, imageSubDir, markdo
  * @returns {string} The fully styled markdown text.
  * @private
  */
-function _applyMarkdownToSegments(textSegments) {
+function applyMarkdownToSegments_(textSegments) {
   if (!textSegments || !Array.isArray(textSegments)) return textSegments || "";
 
   return textSegments

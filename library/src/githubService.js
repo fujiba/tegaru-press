@@ -7,8 +7,8 @@
  * Pushes multiple files to GitHub as a single atomic commit.
  * @private
  */
-function _pushFilesAsSingleCommit(files, commitMessage, settings) {
-  const decryptedToken = _decrypt(settings.GITHUB_TOKEN);
+function pushFilesAsSingleCommit_(files, commitMessage, settings) {
+  const decryptedToken = decrypt_(settings.GITHUB_TOKEN);
 
   const { GITHUB_USER, GITHUB_REPO } = settings;
   const branch = settings.BRANCH_NAME || "main";
@@ -18,14 +18,14 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     .replace(/\.git$/, "");
   const apiBase = `https://api.github.com/repos/${GITHUB_USER}/${repoName}`;
 
-  const refData = __githubApiRequest(
+  const refData = githubApiRequest_(
     `${apiBase}/git/refs/heads/${branch}`,
     "GET",
     null,
     decryptedToken,
   );
   const latestCommitSha = refData.object.sha;
-  const commitData = __githubApiRequest(
+  const commitData = githubApiRequest_(
     `${apiBase}/git/commits/${latestCommitSha}`,
     "GET",
     null,
@@ -34,7 +34,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
   const baseTreeSha = commitData.tree.sha;
 
   const treeElements = files.map((file) => {
-    const blobData = __githubApiRequest(
+    const blobData = githubApiRequest_(
       `${apiBase}/git/blobs`,
       "POST",
       {
@@ -49,7 +49,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     return { path: file.path, mode: "100644", type: "blob", sha: blobData.sha };
   });
 
-  const newTreeData = __githubApiRequest(
+  const newTreeData = githubApiRequest_(
     `${apiBase}/git/trees`,
     "POST",
     {
@@ -59,7 +59,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     decryptedToken,
   );
 
-  const newCommitData = __githubApiRequest(
+  const newCommitData = githubApiRequest_(
     `${apiBase}/git/commits`,
     "POST",
     {
@@ -70,7 +70,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
     decryptedToken,
   );
 
-  __githubApiRequest(
+  githubApiRequest_(
     `${apiBase}/git/refs/heads/${branch}`,
     "PATCH",
     {
@@ -84,7 +84,7 @@ function _pushFilesAsSingleCommit(files, commitMessage, settings) {
  * A generic helper function to make requests to the GitHub API.
  * @private
  */
-function __githubApiRequest(url, method, payload, token) {
+function githubApiRequest_(url, method, payload, token) {
   const options = {
     method: method,
     headers: {
