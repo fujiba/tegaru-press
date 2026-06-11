@@ -111,7 +111,7 @@ function showPreviewDialogHandler() {
   const tabs = TegaruPress.getFlattenedTabs(doc); // タブ情報取得はライブラリに依頼
   const activeTabId = getActiveTabId(doc); // 現在のアクティブタブを取得
 
-  if (tabs.length > 0) {
+  if (tabs.length > 1) {
     const htmlTemplate = HtmlService.createTemplateFromFile("TabSelectionDialog");
     htmlTemplate.tabs = tabs;
     htmlTemplate.activeTabId = activeTabId; // アクティブタブIDを渡す
