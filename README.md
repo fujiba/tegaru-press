@@ -26,7 +26,8 @@ Tegaru Pressは、Googleドキュメントを使い慣れたライターや編�
 
 #### 前提条件
 
-- Node.js（`clasp` は `npm install` でローカルにインストールされます）
+- Node.js と [pnpm](https://pnpm.io/ja/)（`corepack enable` を実行すれば `package.json` の `packageManager` に固定されたバージョンが自動で使われます）
+- `clasp` は `pnpm install` でローカルにインストールされます（グローバルインストールは不要）
 - Googleアカウントで [Apps Script API を有効化](https://script.google.com/home/usersettings)しておくこと（claspが動く条件です）
 
 #### 1. クローンとclaspのログイン
@@ -34,8 +35,8 @@ Tegaru Pressは、Googleドキュメントを使い慣れたライターや編�
 ```bash
 git clone <このリポジトリ>
 cd tegaru-press
-npm install
-npx clasp login   # ブラウザが開くのでGoogleアカウントで承認
+pnpm install
+pnpm exec clasp login   # ブラウザが開くのでGoogleアカウントで承認
 ```
 
 #### 2. ライブラリのデプロイ
@@ -46,7 +47,7 @@ npx clasp login   # ブラウザが開くのでGoogleアカウントで承認
 
 ```bash
 cd library
-npx clasp create --type standalone --title "Tegaru Press Library" --rootDir src
+pnpm exec clasp create --type standalone --title "Tegaru Press Library" --rootDir src
 ```
 
 **既存のGASプロジェクトに紐付ける場合**は、サンプルをコピーしてスクリプトIDを書き換えます:
@@ -61,8 +62,8 @@ cp clasp.json.sample .clasp.json
 コードをpushして、ライブラリとしてデプロイします:
 
 ```bash
-npx clasp push
-npx clasp deploy -d "初回デプロイ"
+pnpm exec clasp push
+pnpm exec clasp deploy -d "初回デプロイ"
 ```
 
 `clasp deploy` の出力に表示される**バージョン番号**（`@1` の `1`）と、このプロジェクトの**スクリプトID**を控えておいてください。次の手順で使います。
@@ -87,7 +88,7 @@ cp src/appsscript.json.sample src/appsscript.json
 5. コンテナバインドプロジェクトへpushします（自動生成された初期ファイルを上書きするため `--force` が必要です）:
 
 ```bash
-npx clasp push --force
+pnpm exec clasp push --force
 ```
 
 6. テンプレートドキュメントをブラウザで再読み込みすると、メニューに「サイト更新」が表示されます。
@@ -156,6 +157,15 @@ PATを暗号化して保存する案も検討しましたが、採用してい�
   ./rm_old_deploy.sh
   ```
 - **CI/CD**: GitHub Actionsによる自動デプロイも設定済みです (`.github/workflows/deploy.yaml`)。
+
+### 依存パッケージの管理方針（サプライチェーン対策）
+
+npmパッケージの乗っ取りによるサプライチェーン攻撃への対策として、以下の方針を取っています。依存を追加・更新する際もこの方針を維持してください。
+
+- **バージョンの完全固定**: `package.json` の依存はすべて `^` なしの完全固定。更新は人が明示的に行います（`savePrefix: ""` により `pnpm add` でも固定で記録されます）。
+- **公開直後のパッケージを避ける**: `pnpm-workspace.yaml` の `minimumReleaseAge` により、公開から7日未満のバージョンはインストールされません。悪意あるバージョンは公開直後に配布されることが多く、発覚までの時間を稼ぎます。
+- **インストール時スクリプトの禁止**: 依存パッケージのpostinstall等は実行しません（pnpmのデフォルト）。新しい依存でビルドスクリプトが必要な場合のみ、`pnpm-workspace.yaml` の `allowBuilds` に個別に追加します。
+- **CIもlockfile経由**: GitHub Actionsでも `pnpm install --frozen-lockfile` を使い、lockfileにないバージョンが入らないようにしています。
 
 ## ライセンス
 

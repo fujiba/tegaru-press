@@ -9,9 +9,10 @@
   },
   "license": "MIT",
   "author": "T.Fujiba",
+  "packageManager": "pnpm@11.2.2",
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
-    "@google/clasp": "^2.4.2",
-    "@types/google-apps-script": "^1.0.83"
+    "@google/clasp": "2.5.0",
+    "@types/google-apps-script": "1.0.100"
   }
 }
