@@ -7,13 +7,6 @@
         "serviceId": "docs",
         "version": "v1"
       }
-    ],
-    "libraries": [
-      {
-        "userSymbol": "cCryptoGS",
-        "libraryId": "MSJnPeIon6nzdLewGV60xWqi_d-phDA33",
-        "version": "0"
-      }
     ]
   },
   "exceptionLogging": "STACKDRIVER",

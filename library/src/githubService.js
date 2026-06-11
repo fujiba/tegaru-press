@@ -8,7 +8,12 @@
  * @private
  */
 function pushFilesAsSingleCommit_(files, commitMessage, settings) {
-  const decryptedToken = decrypt_(settings.GITHUB_TOKEN);
+  const githubToken = settings.GITHUB_TOKEN;
+  if (!githubToken) {
+    throw new Error(
+      "GitHubアクセストークンが未設定です。「サイト更新 > 設定」から登録してください。",
+    );
+  }
 
   const { GITHUB_USER, GITHUB_REPO } = settings;
   const branch = settings.BRANCH_NAME || "main";
@@ -22,14 +27,14 @@ function pushFilesAsSingleCommit_(files, commitMessage, settings) {
     `${apiBase}/git/refs/heads/${branch}`,
     "GET",
     null,
-    decryptedToken,
+    githubToken,
   );
   const latestCommitSha = refData.object.sha;
   const commitData = githubApiRequest_(
     `${apiBase}/git/commits/${latestCommitSha}`,
     "GET",
     null,
-    decryptedToken,
+    githubToken,
   );
   const baseTreeSha = commitData.tree.sha;
 
@@ -43,7 +48,7 @@ function pushFilesAsSingleCommit_(files, commitMessage, settings) {
           : Utilities.base64Encode(file.content, Utilities.Charset.UTF_8),
         encoding: "base64",
       },
-      decryptedToken,
+      githubToken,
     );
 
     return { path: file.path, mode: "100644", type: "blob", sha: blobData.sha };
@@ -56,7 +61,7 @@ function pushFilesAsSingleCommit_(files, commitMessage, settings) {
       base_tree: baseTreeSha,
       tree: treeElements,
     },
-    decryptedToken,
+    githubToken,
   );
 
   const newCommitData = githubApiRequest_(
@@ -67,7 +72,7 @@ function pushFilesAsSingleCommit_(files, commitMessage, settings) {
       tree: newTreeData.sha,
       parents: [latestCommitSha],
     },
-    decryptedToken,
+    githubToken,
   );
 
   githubApiRequest_(
@@ -76,7 +81,7 @@ function pushFilesAsSingleCommit_(files, commitMessage, settings) {
     {
       sha: newCommitData.sha,
     },
-    decryptedToken,
+    githubToken,
   );
 }
 

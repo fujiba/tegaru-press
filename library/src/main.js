@@ -6,7 +6,6 @@
  */
 
 // NOTE: 実装ロジックは以下のファイルに分離されました：
-// - Security.js: 暗号化/復号化
 // - Settings.js: 設定管理
 // - DocumentParser.js: ドキュメント解析
 // - MarkdownBuilder.js: Markdown生成
