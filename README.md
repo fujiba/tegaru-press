@@ -48,6 +48,10 @@ pnpm exec clasp login   # ブラウザが開くのでGoogleアカウントで承
 ```bash
 cd library
 pnpm exec clasp create --type standalone --title "Tegaru Press Library" --rootDir src
+# 【重要・clasp仕様バグ対策】
+# --rootDir src を指定すると、設定ファイルが `src/.clasp.json` 内に生成されてしまうため、
+# claspが認識できるようにルートディレクトリに移動させます。
+mv src/.clasp.json .
 ```
 
 **既存のGASプロジェクトに紐付ける場合**は、サンプルをコピーしてスクリプトIDを書き換えます:
@@ -166,6 +170,20 @@ npmパッケージの乗っ取りによるサプライチェーン攻撃への�
 - **公開直後のパッケージを避ける**: `pnpm-workspace.yaml` の `minimumReleaseAge` により、公開から7日未満のバージョンはインストールされません。悪意あるバージョンは公開直後に配布されることが多く、発覚までの時間を稼ぎます。
 - **インストール時スクリプトの禁止**: 依存パッケージのpostinstall等は実行しません（pnpmのデフォルト）。新しい依存でビルドスクリプトが必要な場合のみ、`pnpm-workspace.yaml` の `allowBuilds` に個別に追加します。
 - **CIもlockfile経由**: GitHub Actionsでも `pnpm install --frozen-lockfile` を使い、lockfileにないバージョンが入らないようにしています。
+
+## トラブルシューティング
+
+### clasp create や push 時に API 関連のエラーが出る
+
+- エラーメッセージ例:
+
+```bash
+User has not enabled the Apps Script API. Enable it by visiting https://script.google.com/home/usersettings then retry.
+```
+
+- 原因と対処法:
+  お使いのGoogleアカウント側で、外部ツールからGASを操作するためのAPIが無効になっています。
+  [Google Apps Scriptのユーザー設定](https://script.google.com/home/usersettings) にブラウザでアクセスし、「Google Apps Script API」を「オン」に変更してから再度コマンドを実行してください。
 
 ## ライセンス
 
